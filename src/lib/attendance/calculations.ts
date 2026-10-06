@@ -1,6 +1,6 @@
 import type { AttendanceState, DomainEvent, ExitCategory } from "@/lib/attendance/types";
 import { eventsOnDay, deriveState } from "@/lib/attendance/state";
-import { clockToMinutes, dayKey, minutesFromMidnight, minutesToClock, zonedDateTime } from "@/lib/time";
+import { clockToMinutes, dayKey, forgottenExitTime, minutesFromMidnight, minutesToClock, zonedDateTime } from "@/lib/time";
 import { APP_TIMEZONE } from "@/lib/attendance/types";
 
 export type SpanKind = "INSIDE" | "OFFICIAL" | "MEAL" | "HEALTH" | "PERSONAL" | "OTHER";
@@ -78,6 +78,7 @@ export type DayMetrics = {
   lastExit: string | null;
   physicalMs: number;
   dutyMs: number;
+  overtimeMs: number;
   officialMs: number;
   mealMs: number;
   healthMs: number;
@@ -107,7 +108,15 @@ export function calculateDay(input: {
 }): DayMetrics {
   const timeZone = input.timeZone ?? APP_TIMEZONE;
   const dayEvents = eventsOnDay(input.events, input.day, timeZone);
-  const closeOpenAt = input.day === dayKey(input.now, timeZone) ? input.now : null;
+  const stillInside = deriveState(dayEvents) === "INSIDE";
+  const assumedExit = forgottenExitTime({
+    day: input.day,
+    workEnd: input.workEnd,
+    now: input.now,
+    timeZone,
+    stillInside,
+  });
+  const closeOpenAt = assumedExit ?? (input.day === dayKey(input.now, timeZone) ? input.now : null);
   const spans = buildSpans(dayEvents, closeOpenAt);
   const insideMs = sumKind(spans, "INSIDE");
   const mealMs = sumKind(spans, "MEAL");
@@ -136,9 +145,17 @@ export function calculateDay(input: {
     }, 0);
   const firstEntry = dayEvents.find((event) => event.eventType === "ENTRY")?.eventTime ?? null;
   const lastExitEvent = [...dayEvents].reverse().find((event) => event.eventType === "EXIT" || event.eventType === "END_OF_DAY");
+  const lastExit = assumedExit?.toISOString() ?? lastExitEvent?.eventTime ?? null;
   const lastEvent = dayEvents[dayEvents.length - 1];
   const workStartAt = zonedDateTime(input.day, input.workStart, timeZone);
   const workEndAt = zonedDateTime(input.day, input.workEnd, timeZone);
+  const overtimeMs = spans
+    .filter((span) => span.kind === "INSIDE")
+    .reduce(
+      (total, span) =>
+        total + overlapMs(span.start, span.end, workEndAt, new Date(workEndAt.getTime() + 18 * 60 * 60 * 1000)),
+      0,
+    );
   const lateMs =
     firstEntry && new Date(firstEntry).getTime() > workStartAt.getTime()
       ? new Date(firstEntry).getTime() - workStartAt.getTime()
@@ -160,9 +177,10 @@ export function calculateDay(input: {
   return {
     date: input.day,
     firstEntry,
-    lastExit: lastExitEvent?.eventTime ?? null,
+    lastExit,
     physicalMs,
-    dutyMs: dutyInsideMs + officialMs,
+    dutyMs: dutyInsideMs + officialMs + overtimeMs,
+    overtimeMs,
     officialMs,
     mealMs,
     healthMs: sumKind(spans, "HEALTH"),
@@ -170,7 +188,7 @@ export function calculateDay(input: {
     otherMs: sumKind(spans, "OTHER"),
     lateMs,
     earlyMs,
-    state: deriveState(dayEvents),
+    state: assumedExit ? "FINISHED" : deriveState(dayEvents),
     officialDetails,
   };
 }

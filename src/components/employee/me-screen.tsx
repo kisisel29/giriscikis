@@ -15,6 +15,7 @@ type Status = {
   firstEntry?: string | null;
   physical?: string;
   duty?: string;
+  overtime?: string | null;
   movements?: { time: string; title: string; detail: string | null }[];
 };
 
@@ -65,6 +66,7 @@ export function MeScreen() {
         <Info label="Bugünkü ilk giriş" value={status.firstEntry ?? "—"} />
         <Info label="Bugün fiziksel olarak kurumda" value={status.physical ?? "—"} />
         <Info label="Mesai kapsamında" value={status.duty ?? "—"} />
+        {status.overtime ? <Info label="Fazla mesai" value={status.overtime} /> : null}
       </div>
       <section>
         <h2 className="text-lg font-semibold">Bugünkü hareketler</h2>

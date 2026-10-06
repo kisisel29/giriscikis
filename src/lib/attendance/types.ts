@@ -59,6 +59,7 @@ export type ExitReasonOption = {
   category: ExitCategory;
   allowNote: boolean;
   sortOrder: number;
+  active: boolean;
 };
 
 export type LocationFix = {

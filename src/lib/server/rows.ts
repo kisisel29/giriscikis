@@ -176,6 +176,7 @@ export function mapReason(value: unknown): ExitReasonOption {
     category: oneOf(str(record, "category"), EXIT_CATEGORIES, "Kategori"),
     allowNote: bool(record, "allow_note"),
     sortOrder: num(record, "sort_order"),
+    active: bool(record, "active"),
   };
 }
 

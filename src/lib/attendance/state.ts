@@ -1,5 +1,5 @@
 import type { AttendanceState, DomainEvent, ExitCategory, TagMode } from "@/lib/attendance/types";
-import { dayKey, previousDayKey } from "@/lib/time";
+import { dayKey, forgottenExitTime, previousDayKey } from "@/lib/time";
 import { APP_TIMEZONE } from "@/lib/attendance/types";
 
 export function outsideState(category: ExitCategory): AttendanceState {
@@ -49,21 +49,37 @@ export function deriveCurrentPresence(
   events: DomainEvent[],
   now: Date,
   timeZone = APP_TIMEZONE,
-): { state: AttendanceState; carried: boolean } {
-  const today = eventsOnDay(
-    events.filter((event) => new Date(event.eventTime).getTime() <= now.getTime()),
-    dayKey(now, timeZone),
-    timeZone,
-  );
+  workEnd = "16:45",
+): { state: AttendanceState; carried: boolean; assumedExit: string | null } {
+  const visible = events.filter((event) => new Date(event.eventTime).getTime() <= now.getTime());
+  const todayKey = dayKey(now, timeZone);
+  const today = eventsOnDay(visible, todayKey, timeZone);
   if (today.length > 0) {
-    return { state: deriveState(today), carried: false };
+    const state = deriveState(today);
+    const assumed = forgottenExitTime({
+      day: todayKey,
+      workEnd,
+      now,
+      timeZone,
+      stillInside: state === "INSIDE",
+    });
+    if (assumed) return { state: "FINISHED", carried: false, assumedExit: assumed.toISOString() };
+    return { state, carried: false, assumedExit: null };
   }
-  const yesterday = eventsOnDay(events, previousDayKey(now, timeZone), timeZone);
-  const yesterdayState = deriveState(yesterday);
+  const yesterdayKey = previousDayKey(now, timeZone);
+  const yesterdayState = deriveState(eventsOnDay(visible, yesterdayKey, timeZone));
+  const assumedYesterday = forgottenExitTime({
+    day: yesterdayKey,
+    workEnd,
+    now,
+    timeZone,
+    stillInside: yesterdayState === "INSIDE",
+  });
+  if (assumedYesterday) return { state: "NOT_ARRIVED", carried: false, assumedExit: null };
   if (isOpenState(yesterdayState)) {
-    return { state: yesterdayState, carried: true };
+    return { state: yesterdayState, carried: true, assumedExit: null };
   }
-  return { state: "NOT_ARRIVED", carried: false };
+  return { state: "NOT_ARRIVED", carried: false, assumedExit: null };
 }
 
 export function isEntryMode(mode: TagMode, state: AttendanceState): boolean {

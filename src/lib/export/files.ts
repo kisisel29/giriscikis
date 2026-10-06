@@ -70,6 +70,7 @@ type ReportShape = {
     averageExit: string | null;
     physical: string;
     duty: string;
+    overtime: string;
     official: string;
     meal: string;
     health: string;
@@ -85,6 +86,8 @@ type ReportShape = {
       firstEntryLabel: string;
       lastExitLabel: string;
       physical: string;
+      duty: string;
+      overtime: string;
       official: string;
       personal: string;
       other: string;
@@ -100,8 +103,8 @@ export function reportTables(data: ReportShape, title: string): ExportTable[] {
     title,
     subtitle: `${data.from} – ${data.to}`,
     columns: daily
-      ? ["Personel", "Birim", "İlk giriş", "Son çıkış", "Kurumda", "Resmî görev", "Kişisel", "Diğer", "Durum"]
-      : ["Personel", "Birim", "Ort. giriş", "Ort. çıkış", "Kurumda", "Mesai", "Resmî görev", "Geç", "Erken", "Eksik"],
+      ? ["Personel", "Birim", "İlk giriş", "Son çıkış", "Kurumda", "Mesai", "Fazla mesai", "Resmî görev", "Kişisel", "Diğer", "Durum"]
+      : ["Personel", "Birim", "Ort. giriş", "Ort. çıkış", "Kurumda", "Mesai", "Fazla mesai", "Resmî görev", "Geç", "Erken", "Eksik"],
     rows: data.reports.map((report) => {
       const day = report.days[0];
       if (daily && day) {
@@ -111,6 +114,8 @@ export function reportTables(data: ReportShape, title: string): ExportTable[] {
           day.firstEntryLabel,
           day.lastExitLabel,
           day.physical,
+          day.duty,
+          day.overtime,
           day.official,
           day.personal,
           day.other,
@@ -124,6 +129,7 @@ export function reportTables(data: ReportShape, title: string): ExportTable[] {
         report.averageExit ?? "—",
         report.physical,
         report.duty,
+        report.overtime,
         report.official,
         `${report.lateCount} / ${report.late}`,
         `${report.earlyCount} / ${report.early}`,

@@ -205,16 +205,42 @@ export async function createReason(body: unknown): Promise<ExitReasonOption> {
 
 export async function updateReason(id: string, body: unknown): Promise<ExitReasonOption> {
   const input = parseBody(exitReasonSchema.partial(), body);
+  const admin = createAdminClient();
+  const current = unwrap(await admin.from("exit_reasons").select("*").eq("id", id).maybeSingle());
+  if (!current) throw new ApiError("Çıkış nedeni bulunamadı.", 404);
+  const existing = mapReason(current);
+  if (existing.code === "END_OF_DAY") {
+    if (input.active === false) throw new ApiError("Mesai sonu nedeni pasif yapılamaz.", 409);
+    if (input.category && input.category !== "END_OF_DAY") {
+      throw new ApiError("Mesai sonu nedeninin türü değiştirilemez.", 409);
+    }
+  }
   const patch: Record<string, unknown> = {};
   if (input.name) patch.name = input.name;
   if (input.category) patch.category = input.category;
   if (input.allowNote !== undefined) patch.allow_note = input.allowNote;
   if (input.sortOrder !== undefined) patch.sort_order = input.sortOrder;
   if (input.active !== undefined) patch.active = input.active;
-  const admin = createAdminClient();
   const data = unwrap(await admin.from("exit_reasons").update(patch).eq("id", id).select("*").maybeSingle());
   if (!data) throw new ApiError("Çıkış nedeni bulunamadı.", 404);
   return mapReason(data);
+}
+
+export async function deleteReason(id: string): Promise<void> {
+  const admin = createAdminClient();
+  const current = unwrap(await admin.from("exit_reasons").select("*").eq("id", id).maybeSingle());
+  if (!current) throw new ApiError("Çıkış nedeni bulunamadı.", 404);
+  const existing = mapReason(current);
+  if (existing.code === "END_OF_DAY") {
+    throw new ApiError("Mesai sonu nedeni silinemez. Adını düzenleyebilirsiniz.", 409);
+  }
+  const used = await admin.from("attendance_events").select("id", { count: "exact", head: true }).eq("exit_reason_id", id);
+  if (used.error) throw new ApiError("Veritabanı işlemi başarısız.", 500);
+  if ((used.count ?? 0) > 0) {
+    throw new ApiError("Bu neden geçmiş çıkışlarda kullanılıyor. Silinemez; düzenleyip pasif yapabilirsiniz.", 409);
+  }
+  const removed = await admin.from("exit_reasons").delete().eq("id", id);
+  if (removed.error) throw new ApiError("Veritabanı işlemi başarısız.", 500);
 }
 
 export async function getSettings() {

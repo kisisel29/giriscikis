@@ -120,8 +120,15 @@ function failure(assessment: NfcAssessment): NfcSuccessResponse | null {
   }
 }
 
-function lastExit(events: DomainEvent[], now: Date, timeZone: string) {
-  const presence = deriveCurrentPresence(events, now, timeZone);
+function lastExit(events: DomainEvent[], now: Date, timeZone: string, workEnd: string) {
+  const presence = deriveCurrentPresence(events, now, timeZone, workEnd);
+  if (presence.assumedExit) {
+    return {
+      time: formatTime(presence.assumedExit, timeZone),
+      label: "Mesai sonu",
+      detail: "Çıkış kaydı olmadığı için mesai bitişinde çıkmış kabul edildi.",
+    };
+  }
   const key = presence.carried ? previousDayKey(now, timeZone) : dayKey(now, timeZone);
   const dayEvents = eventsOnDay(events, key, timeZone);
   const event = [...dayEvents].reverse().find((item) => item.eventType === "EXIT" || item.eventType === "END_OF_DAY");
@@ -225,7 +232,7 @@ async function prepare(
   const recognized = isDeviceRecognized(counts.entries, counts.exits);
   const location = locationOf(settings, input);
   const duplicate = employee && tag ? await isDuplicate(employee.id, tag.id, settings.duplicateWindowSeconds) : false;
-  const state = deriveCurrentPresence(events, now, timeZone);
+  const state = deriveCurrentPresence(events, now, timeZone, employee?.workEnd ?? settings.defaultWorkEnd);
   return {
     settings,
     timeZone,
@@ -268,7 +275,7 @@ async function respond(prepared: Prepared, assessment: NfcAssessment): Promise<N
     return {
       action: "ALREADY_OUTSIDE",
       message: "Şu anda kurum dışında görünüyorsunuz.",
-      lastExit: lastExit(prepared.events, prepared.now, timeZone),
+      lastExit: lastExit(prepared.events, prepared.now, timeZone, prepared.employee?.workEnd ?? prepared.settings.defaultWorkEnd),
     };
   }
   if (assessment.action === "CONFIRM_REENTRY") {
@@ -391,7 +398,7 @@ export async function getMyStatus() {
   const events = await loadRecentEvents(employee.id, now, timeZone);
   const todayKey = dayKey(now, timeZone);
   const today = eventsOnDay(events, todayKey, timeZone);
-  const presence = deriveCurrentPresence(events, now, timeZone);
+  const presence = deriveCurrentPresence(events, now, timeZone, employee.workEnd);
   const metrics = calculateDay({
     events,
     day: todayKey,
@@ -414,6 +421,18 @@ export async function getMyStatus() {
     firstEntry: metrics.firstEntry ? formatTime(metrics.firstEntry, timeZone) : null,
     physical: formatDuration(metrics.physicalMs, true),
     duty: formatDuration(metrics.dutyMs, true),
-    movements: today.map((event) => describeMovement(event, timeZone)),
+    overtime: metrics.overtimeMs > 0 ? formatDuration(metrics.overtimeMs, true) : null,
+    movements: [
+      ...today.map((event) => describeMovement(event, timeZone)),
+      ...(presence.assumedExit
+        ? [
+            {
+              time: formatTime(presence.assumedExit, timeZone),
+              title: "Mesai sonu",
+              detail: "Çıkış kaydı olmadığı için mesai bitişinde çıkmış kabul edildi.",
+            },
+          ]
+        : []),
+    ],
   };
 }

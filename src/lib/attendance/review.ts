@@ -1,6 +1,6 @@
 import type { AnomalyCode, AttendanceState, DomainEvent } from "@/lib/attendance/types";
 import { deriveState, eventsOnDay, isOpenState } from "@/lib/attendance/state";
-import { dayKey, previousDayKey } from "@/lib/time";
+import { dayKey, forgottenExitTime, previousDayKey } from "@/lib/time";
 import { APP_TIMEZONE } from "@/lib/attendance/types";
 
 export type Anomaly = {
@@ -18,6 +18,7 @@ export function findDayAnomalies(input: {
   duplicateWindowSeconds: number;
   now: Date;
   timeZone?: string;
+  workEnd?: string;
 }): Anomaly[] {
   const timeZone = input.timeZone ?? APP_TIMEZONE;
   const dayEvents = eventsOnDay(input.events, input.day, timeZone);
@@ -94,7 +95,15 @@ export function findDayAnomalies(input: {
   }
 
   const complete = input.day < dayKey(input.now, timeZone);
-  if (complete && isOpenState(deriveState(dayEvents))) {
+  const state = deriveState(dayEvents);
+  const assumed = forgottenExitTime({
+    day: input.day,
+    workEnd: input.workEnd ?? "16:45",
+    now: input.now,
+    timeZone,
+    stillInside: state === "INSIDE",
+  });
+  if (complete && isOpenState(state) && !assumed) {
     anomalies.push({
       code: "OPEN_AT_DAY_END",
       employeeId: input.employeeId,
@@ -112,11 +121,23 @@ export function findCarriedInside(input: {
   events: DomainEvent[];
   now: Date;
   timeZone?: string;
+  workEnd?: string;
 }): Anomaly | null {
   const timeZone = input.timeZone ?? APP_TIMEZONE;
   const yesterday = previousDayKey(input.now, timeZone);
   const state: AttendanceState = deriveState(eventsOnDay(input.events, yesterday, timeZone));
   if (state !== "INSIDE") return null;
+  if (
+    forgottenExitTime({
+      day: yesterday,
+      workEnd: input.workEnd ?? "16:45",
+      now: input.now,
+      timeZone,
+      stillInside: true,
+    })
+  ) {
+    return null;
+  }
   return {
     code: "CARRIED_INSIDE",
     employeeId: input.employeeId,

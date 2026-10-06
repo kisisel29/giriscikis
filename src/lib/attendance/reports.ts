@@ -21,6 +21,7 @@ export type EmployeeReport = {
   days: DayMetrics[];
   physicalMs: number;
   dutyMs: number;
+  overtimeMs: number;
   officialMs: number;
   mealMs: number;
   healthMs: number;
@@ -41,6 +42,7 @@ function sumDays(days: DayMetrics[], missingCount: number, timeZone: string): Om
   return {
     physicalMs: total((day) => day.physicalMs),
     dutyMs: total((day) => day.dutyMs),
+    overtimeMs: total((day) => day.overtimeMs),
     officialMs: total((day) => day.officialMs),
     mealMs: total((day) => day.mealMs),
     healthMs: total((day) => day.healthMs),
@@ -93,6 +95,7 @@ export function buildReports(input: {
             duplicateWindowSeconds: input.duplicateWindowSeconds,
             now: input.now,
             timeZone,
+            workEnd: employee.workEnd,
           }).length,
         0,
       );

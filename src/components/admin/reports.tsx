@@ -21,6 +21,7 @@ type Report = {
   department: string | null;
   physical: string;
   duty: string;
+  overtime: string;
   official: string;
   personal: string;
   other: string;
@@ -131,7 +132,7 @@ export function ReportView({ period }: { period: "daily" | "weekly" | "monthly" 
                     <tr key={`${row.employeeId}-detail`}>
                       <td colSpan={8} className="bg-slate-50 px-3 py-3">
                         <p>
-                          Mesai kapsamı {row.duty}. Geç giriş {row.lateCount} ({row.late}). Erken çıkış {row.earlyCount} ({row.early}).
+                          Mesai kapsamı {row.duty}. Fazla mesai {row.overtime}. Geç giriş {row.lateCount} ({row.late}). Erken çıkış {row.earlyCount} ({row.early}).
                         </p>
                         {row.officialDetails.map((detail, index) => (
                           <p key={`${detail.dateLabel}-${index}`} className="mt-1">

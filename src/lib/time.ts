@@ -82,6 +82,20 @@ export function clockToMinutes(time: string): number {
   return hour * 60 + minute;
 }
 
+export function forgottenExitTime(input: {
+  day: string;
+  workEnd: string;
+  now: Date;
+  timeZone?: string;
+  stillInside: boolean;
+}): Date | null {
+  if (!input.stillInside) return null;
+  const timeZone = input.timeZone ?? APP_TIMEZONE;
+  const cutoff = zonedDateTime(input.day, "23:00", timeZone);
+  if (input.now.getTime() < cutoff.getTime()) return null;
+  return zonedDateTime(input.day, input.workEnd, timeZone);
+}
+
 export function shouldSuggestEndOfDay(
   now: Date,
   workEnd: string,

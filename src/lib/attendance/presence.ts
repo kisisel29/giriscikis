@@ -1,6 +1,7 @@
 import type { AttendanceState, DomainEvent } from "@/lib/attendance/types";
 import { deriveCurrentPresence } from "@/lib/attendance/state";
 import { describeMovement } from "@/lib/attendance/labels";
+import { formatTime } from "@/lib/time";
 import { APP_TIMEZONE } from "@/lib/attendance/types";
 
 export type PresenceEmployee = {
@@ -8,6 +9,7 @@ export type PresenceEmployee = {
   fullName: string;
   department: string | null;
   active: boolean;
+  workEnd?: string;
 };
 
 export type PresenceRow = {
@@ -45,19 +47,26 @@ export function buildPresence(input: {
     .filter((employee) => employee.active)
     .map((employee) => {
       const own = input.events.filter((event) => event.employeeId === employee.id);
-      const presence = deriveCurrentPresence(own, input.now, timeZone);
+      const presence = deriveCurrentPresence(own, input.now, timeZone, employee.workEnd ?? "16:45");
       counts[presence.state] += 1;
       const latest = [...own].sort((a, b) => b.eventTime.localeCompare(a.eventTime))[0];
       const described = latest ? describeMovement(latest, timeZone) : null;
+      const assumed = presence.assumedExit
+        ? {
+            time: formatTime(presence.assumedExit, timeZone),
+            title: "Mesai sonu",
+            detail: "Çıkış kaydı olmadığı için mesai bitişinde çıkmış kabul edildi.",
+          }
+        : null;
       return {
         employeeId: employee.id,
         fullName: employee.fullName,
         department: employee.department,
         state: presence.state,
         carried: presence.carried,
-        lastTime: described?.time ?? null,
-        lastTitle: described?.title ?? null,
-        lastDetail: described?.detail ?? null,
+        lastTime: assumed?.time ?? described?.time ?? null,
+        lastTitle: assumed?.title ?? described?.title ?? null,
+        lastDetail: assumed?.detail ?? described?.detail ?? null,
       };
     })
     .sort((a, b) => a.fullName.localeCompare(b.fullName, "tr"));

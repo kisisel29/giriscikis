@@ -91,6 +91,7 @@ export async function getOverview() {
       fullName: employee.fullName,
       department: employee.department,
       active: employee.active,
+      workEnd: employee.workEnd,
     })),
     events,
     now,
@@ -121,9 +122,17 @@ async function collectReview(employees: Employee[], events: DomainEvent[], now: 
   const items = employees.flatMap((employee) => {
     const own = events.filter((event) => event.employeeId === employee.id);
     const anomalies = days.flatMap((day) =>
-      findDayAnomalies({ employeeId: employee.id, day, events: own, duplicateWindowSeconds: windowSeconds, now, timeZone }),
+      findDayAnomalies({
+        employeeId: employee.id,
+        day,
+        events: own,
+        duplicateWindowSeconds: windowSeconds,
+        now,
+        timeZone,
+        workEnd: employee.workEnd,
+      }),
     );
-    const carried = findCarriedInside({ employeeId: employee.id, events: own, now, timeZone });
+    const carried = findCarriedInside({ employeeId: employee.id, events: own, now, timeZone, workEnd: employee.workEnd });
     return carried ? [...anomalies, carried] : anomalies;
   });
   return items.map((item) => ({
@@ -193,6 +202,7 @@ export async function getReport(params: URLSearchParams) {
       ...report,
       physical: formatDuration(report.physicalMs),
       duty: formatDuration(report.dutyMs),
+      overtime: formatDuration(report.overtimeMs),
       official: formatDuration(report.officialMs),
       meal: formatDuration(report.mealMs),
       health: formatDuration(report.healthMs),
@@ -207,6 +217,7 @@ export async function getReport(params: URLSearchParams) {
         lastExitLabel: day.lastExit ? formatTime(day.lastExit, timeZone) : "—",
         physical: formatDuration(day.physicalMs),
         duty: formatDuration(day.dutyMs),
+        overtime: formatDuration(day.overtimeMs),
         official: formatDuration(day.officialMs),
         personal: formatDuration(day.personalMs),
         other: formatDuration(day.otherMs),

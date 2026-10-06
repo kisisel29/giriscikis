@@ -64,6 +64,7 @@ describe("senaryo 2 ve 3 çıkış nedeni", () => {
     category: "OFFICIAL",
     allowNote: true,
     sortOrder: 10,
+    active: true,
   };
 
   it("yalnızca özel metni saklar", () => {
@@ -222,6 +223,68 @@ describe("süre hesabı", () => {
     expect(day.dutyMs).toBe((6 * 60 + 55) * 60 * 1000);
     expect(day.lateMs).toBe(0);
     expect(day.earlyMs).toBe(0);
+    expect(day.overtimeMs).toBe(0);
+  });
+
+  it("mesai bitiminden sonraki çıkışı fazla mesai sayar", () => {
+    const events = [
+      event({ eventType: "ENTRY", eventTime: "2026-10-06T08:30:00+03:00" }),
+      event({ eventType: "END_OF_DAY", eventTime: "2026-10-06T18:00:00+03:00", exitCategory: "END_OF_DAY" }),
+    ];
+    const day = calculateDay({
+      events,
+      day: "2026-10-06",
+      workStart: "08:30",
+      workEnd: "16:45",
+      lunchStart: "11:50",
+      lunchEnd: "13:10",
+      now: new Date("2026-10-06T18:10:00+03:00"),
+    });
+    expect(day.physicalMs).toBe((9 * 60 + 30) * 60 * 1000);
+    expect(day.overtimeMs).toBe((1 * 60 + 15) * 60 * 1000);
+    expect(day.dutyMs).toBe((8 * 60 + 10) * 60 * 1000);
+    expect(day.state).toBe("FINISHED");
+    const later = calculateDay({
+      events,
+      day: "2026-10-06",
+      workStart: "08:30",
+      workEnd: "16:45",
+      lunchStart: "11:50",
+      lunchEnd: "13:10",
+      now: new Date("2026-10-06T23:30:00+03:00"),
+    });
+    expect(later.lastExit).toBe("2026-10-06T18:00:00+03:00");
+    expect(later.overtimeMs).toBe((1 * 60 + 15) * 60 * 1000);
+  });
+
+  it("23:00'te hâlâ içerideyse çıkışı mesai bitişine alır", () => {
+    const events = [event({ eventType: "ENTRY", eventTime: "2026-10-06T08:30:00+03:00" })];
+    const open = calculateDay({
+      events,
+      day: "2026-10-06",
+      workStart: "08:30",
+      workEnd: "16:45",
+      lunchStart: "11:50",
+      lunchEnd: "13:10",
+      now: new Date("2026-10-06T22:00:00+03:00"),
+    });
+    expect(open.state).toBe("INSIDE");
+    expect(open.overtimeMs).toBe((5 * 60 + 15) * 60 * 1000);
+
+    const closed = calculateDay({
+      events,
+      day: "2026-10-06",
+      workStart: "08:30",
+      workEnd: "16:45",
+      lunchStart: "11:50",
+      lunchEnd: "13:10",
+      now: new Date("2026-10-06T23:00:00+03:00"),
+    });
+    expect(closed.state).toBe("FINISHED");
+    expect(closed.lastExit).toBe(new Date("2026-10-06T16:45:00+03:00").toISOString());
+    expect(closed.physicalMs).toBe((8 * 60 + 15) * 60 * 1000);
+    expect(closed.dutyMs).toBe((6 * 60 + 55) * 60 * 1000);
+    expect(closed.overtimeMs).toBe(0);
   });
 
   it("mesai sonuna 30 dakika kala önerir", () => {
@@ -316,11 +379,31 @@ describe("hatalı kayıtlar", () => {
 });
 
 describe("dün içeride kalan", () => {
-  it("bugün hareket yoksa dünkü açık durumu taşır", () => {
+  it("23:00 geçince unutulan çıkışı mesai bitişine alır ve ertesi gün taşımaz", () => {
+    const events = [event({ eventType: "ENTRY", eventTime: "2026-10-05T08:30:00+03:00" })];
+    expect(deriveCurrentPresence(events, new Date("2026-10-05T22:30:00+03:00"), "Europe/Istanbul", "16:45")).toEqual({
+      state: "INSIDE",
+      carried: false,
+      assumedExit: null,
+    });
+    expect(deriveCurrentPresence(events, new Date("2026-10-05T23:00:00+03:00"), "Europe/Istanbul", "16:45").state).toBe(
+      "FINISHED",
+    );
+    expect(deriveCurrentPresence(events, new Date("2026-10-06T09:00:00+03:00"), "Europe/Istanbul", "16:45")).toEqual({
+      state: "NOT_ARRIVED",
+      carried: false,
+      assumedExit: null,
+    });
+  });
+
+  it("resmî görevle dışarıda kalanı ertesi güne taşır", () => {
     const presence = deriveCurrentPresence(
-      [event({ eventType: "ENTRY", eventTime: "2026-10-05T08:00:00+03:00" })],
+      [
+        event({ eventType: "ENTRY", eventTime: "2026-10-05T08:00:00+03:00" }),
+        event({ eventType: "EXIT", eventTime: "2026-10-05T15:00:00+03:00", exitCategory: "OFFICIAL" }),
+      ],
       new Date("2026-10-06T09:00:00+03:00"),
     );
-    expect(presence).toEqual({ state: "INSIDE", carried: true });
+    expect(presence).toEqual({ state: "OUT_OFFICIAL", carried: true, assumedExit: null });
   });
 });
