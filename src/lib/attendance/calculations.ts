@@ -89,11 +89,19 @@ export type DayMetrics = {
   officialDetails: OfficialDetail[];
 };
 
+function overlapMs(startIso: string, endIso: string, windowStart: Date, windowEnd: Date): number {
+  const start = Math.max(new Date(startIso).getTime(), windowStart.getTime());
+  const end = Math.min(new Date(endIso).getTime(), windowEnd.getTime());
+  return Math.max(0, end - start);
+}
+
 export function calculateDay(input: {
   events: DomainEvent[];
   day: string;
   workStart: string;
   workEnd: string;
+  lunchStart?: string | null;
+  lunchEnd?: string | null;
   now: Date;
   timeZone?: string;
 }): DayMetrics {
@@ -101,8 +109,31 @@ export function calculateDay(input: {
   const dayEvents = eventsOnDay(input.events, input.day, timeZone);
   const closeOpenAt = input.day === dayKey(input.now, timeZone) ? input.now : null;
   const spans = buildSpans(dayEvents, closeOpenAt);
-  const physicalMs = sumKind(spans, "INSIDE");
+  const insideMs = sumKind(spans, "INSIDE");
+  const mealMs = sumKind(spans, "MEAL");
+  const physicalMs = insideMs + mealMs;
   const officialMs = sumKind(spans, "OFFICIAL");
+  const lunchStart = input.lunchStart ?? null;
+  const lunchEnd = input.lunchEnd ?? null;
+  const windows =
+    lunchStart && lunchEnd && clockToMinutes(lunchStart) > clockToMinutes(input.workStart) && clockToMinutes(input.workEnd) > clockToMinutes(lunchEnd)
+      ? [
+          [input.workStart, lunchStart],
+          [lunchEnd, input.workEnd],
+        ]
+      : [[input.workStart, input.workEnd]];
+  const dutyInsideMs = spans
+    .filter((span) => span.kind === "INSIDE" || span.kind === "MEAL")
+    .reduce((total, span) => {
+      return (
+        total +
+        windows.reduce(
+          (windowTotal, [from, to]) =>
+            windowTotal + overlapMs(span.start, span.end, zonedDateTime(input.day, from, timeZone), zonedDateTime(input.day, to, timeZone)),
+          0,
+        )
+      );
+    }, 0);
   const firstEntry = dayEvents.find((event) => event.eventType === "ENTRY")?.eventTime ?? null;
   const lastExitEvent = [...dayEvents].reverse().find((event) => event.eventType === "EXIT" || event.eventType === "END_OF_DAY");
   const lastEvent = dayEvents[dayEvents.length - 1];
@@ -131,9 +162,9 @@ export function calculateDay(input: {
     firstEntry,
     lastExit: lastExitEvent?.eventTime ?? null,
     physicalMs,
-    dutyMs: physicalMs + officialMs,
+    dutyMs: dutyInsideMs + officialMs,
     officialMs,
-    mealMs: sumKind(spans, "MEAL"),
+    mealMs,
     healthMs: sumKind(spans, "HEALTH"),
     personalMs: sumKind(spans, "PERSONAL"),
     otherMs: sumKind(spans, "OTHER"),

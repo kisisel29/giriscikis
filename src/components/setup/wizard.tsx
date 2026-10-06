@@ -98,8 +98,8 @@ export function SetupWizard() {
         </button>
         <Field name="allowedRadiusMeters" label="İzin verilen yarıçap (metre)" type="number" defaultValue="150" required />
         <div className="grid grid-cols-2 gap-3">
-          <Field name="workStart" label="Mesai başı" type="time" defaultValue="08:00" required />
-          <Field name="workEnd" label="Mesai sonu" type="time" defaultValue="17:00" required />
+          <Field name="workStart" label="Sabah mesai başı" type="time" defaultValue="08:30" required />
+          <Field name="workEnd" label="Akşam mesai sonu" type="time" defaultValue="16:45" required />
         </div>
         <Field name="entryTagName" label="Giriş NFC adı" defaultValue="Ana kapı giriş" required />
         <Field name="entryLocation" label="Giriş konumu" defaultValue="Ana kapı" />

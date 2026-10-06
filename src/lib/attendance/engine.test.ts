@@ -204,6 +204,26 @@ describe("süre hesabı", () => {
     expect(day.earlyMs).toBe(0);
   });
 
+  it("öğle arasını kurumda sayar, mesai dilimlerine katmaz", () => {
+    const events = [
+      event({ eventType: "ENTRY", eventTime: "2026-10-06T08:30:00+03:00" }),
+      event({ eventType: "END_OF_DAY", eventTime: "2026-10-06T16:45:00+03:00", exitCategory: "END_OF_DAY" }),
+    ];
+    const day = calculateDay({
+      events,
+      day: "2026-10-06",
+      workStart: "08:30",
+      workEnd: "16:45",
+      lunchStart: "11:50",
+      lunchEnd: "13:10",
+      now: new Date("2026-10-06T18:00:00+03:00"),
+    });
+    expect(day.physicalMs).toBe((8 * 60 + 15) * 60 * 1000);
+    expect(day.dutyMs).toBe((6 * 60 + 55) * 60 * 1000);
+    expect(day.lateMs).toBe(0);
+    expect(day.earlyMs).toBe(0);
+  });
+
   it("mesai sonuna 30 dakika kala önerir", () => {
     expect(shouldSuggestEndOfDay(new Date("2026-10-06T16:30:00+03:00"), "17:00", 30)).toBe(true);
     expect(shouldSuggestEndOfDay(new Date("2026-10-06T16:29:00+03:00"), "17:00", 30)).toBe(false);

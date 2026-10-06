@@ -66,6 +66,8 @@ export const employeeSchema = z.object({
   title: optionalText(120),
   workStart: clock,
   workEnd: clock,
+  lunchStart: clock.optional(),
+  lunchEnd: clock.optional(),
   maxDevices: z.number().int().gte(1).lte(10).optional(),
   active: z.boolean().optional(),
 });
@@ -95,6 +97,8 @@ export const settingsSchema = z.object({
   timezone: z.string().trim().min(3).max(64),
   defaultWorkStart: clock,
   defaultWorkEnd: clock,
+  lunchStart: clock,
+  lunchEnd: clock,
   duplicateWindowSeconds: z.number().int().gte(5).lte(300),
   endOfDaySuggestionMinutes: z.number().int().gte(0).lte(180),
   storeRawCoordinates: z.boolean(),

@@ -12,6 +12,8 @@ type Settings = {
   timezone: string;
   defaultWorkStart: string;
   defaultWorkEnd: string;
+  lunchStart: string;
+  lunchEnd: string;
   duplicateWindowSeconds: number;
   endOfDaySuggestionMinutes: number;
   storeRawCoordinates: boolean;
@@ -46,6 +48,8 @@ export function SettingsForm() {
             timezone: form.get("timezone"),
             defaultWorkStart: form.get("defaultWorkStart"),
             defaultWorkEnd: form.get("defaultWorkEnd"),
+            lunchStart: form.get("lunchStart"),
+            lunchEnd: form.get("lunchEnd"),
             duplicateWindowSeconds: Number(form.get("duplicateWindowSeconds")),
             endOfDaySuggestionMinutes: Number(form.get("endOfDaySuggestionMinutes")),
             storeRawCoordinates: form.get("storeRawCoordinates") === "on",
@@ -68,8 +72,18 @@ export function SettingsForm() {
       <label className="text-sm">Saat dilimi
         <input name="timezone" defaultValue={settings.timezone} className="mt-1 min-h-11 w-full rounded-xl border px-3" />
       </label>
-      <input name="defaultWorkStart" type="time" defaultValue={settings.defaultWorkStart} className="min-h-11 rounded-xl border px-3" />
-      <input name="defaultWorkEnd" type="time" defaultValue={settings.defaultWorkEnd} className="min-h-11 rounded-xl border px-3" />
+      <label className="text-sm">Sabah mesai başı
+        <input name="defaultWorkStart" type="time" defaultValue={settings.defaultWorkStart} className="mt-1 min-h-11 w-full rounded-xl border px-3" />
+      </label>
+      <label className="text-sm">Öğle arası başlangıcı
+        <input name="lunchStart" type="time" defaultValue={settings.lunchStart} className="mt-1 min-h-11 w-full rounded-xl border px-3" />
+      </label>
+      <label className="text-sm">Öğle arası bitişi
+        <input name="lunchEnd" type="time" defaultValue={settings.lunchEnd} className="mt-1 min-h-11 w-full rounded-xl border px-3" />
+      </label>
+      <label className="text-sm">Akşam mesai sonu
+        <input name="defaultWorkEnd" type="time" defaultValue={settings.defaultWorkEnd} className="mt-1 min-h-11 w-full rounded-xl border px-3" />
+      </label>
       <label className="text-sm">Mükerrer kayıt penceresi (saniye)
         <input name="duplicateWindowSeconds" type="number" defaultValue={settings.duplicateWindowSeconds} className="mt-1 min-h-11 w-full rounded-xl border px-3" />
       </label>

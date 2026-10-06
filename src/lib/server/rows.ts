@@ -15,6 +15,8 @@ export type Settings = {
   timezone: string;
   defaultWorkStart: string;
   defaultWorkEnd: string;
+  lunchStart: string;
+  lunchEnd: string;
   duplicateWindowSeconds: number;
   endOfDaySuggestionMinutes: number;
   storeRawCoordinates: boolean;
@@ -29,6 +31,8 @@ export type Employee = {
   active: boolean;
   workStart: string;
   workEnd: string;
+  lunchStart: string;
+  lunchEnd: string;
   maxDevices: number;
 };
 
@@ -103,6 +107,12 @@ function clock(record: Row, key: string): string {
   return str(record, key).slice(0, 5);
 }
 
+function clockOr(record: Row, key: string, fallback: string): string {
+  const value = record[key];
+  if (typeof value !== "string" || value.length < 5) return fallback;
+  return value.slice(0, 5);
+}
+
 function oneOf<T extends string>(value: string, allowed: readonly T[], label: string): T {
   if ((allowed as readonly string[]).includes(value)) return value as T;
   throw new ApiError(`${label} geçersiz.`, 500);
@@ -120,6 +130,8 @@ export function mapSettings(value: unknown): Settings {
     timezone: str(record, "timezone"),
     defaultWorkStart: clock(record, "default_work_start"),
     defaultWorkEnd: clock(record, "default_work_end"),
+    lunchStart: clockOr(record, "lunch_start", "11:50"),
+    lunchEnd: clockOr(record, "lunch_end", "13:10"),
     duplicateWindowSeconds: num(record, "duplicate_window_seconds"),
     endOfDaySuggestionMinutes: num(record, "end_of_day_suggestion_minutes"),
     storeRawCoordinates: bool(record, "store_raw_coordinates"),
@@ -137,6 +149,8 @@ export function mapEmployee(value: unknown): Employee {
     active: bool(record, "active"),
     workStart: clock(record, "work_start_time"),
     workEnd: clock(record, "work_end_time"),
+    lunchStart: clockOr(record, "lunch_start", "11:50"),
+    lunchEnd: clockOr(record, "lunch_end", "13:10"),
     maxDevices: num(record, "max_devices"),
   };
 }

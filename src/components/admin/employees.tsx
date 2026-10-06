@@ -13,6 +13,8 @@ type Employee = {
   active: boolean;
   workStart: string;
   workEnd: string;
+  lunchStart: string;
+  lunchEnd: string;
   maxDevices: number;
 };
 
@@ -51,6 +53,8 @@ export function EmployeesManager() {
               title: form.get("title"),
               workStart: form.get("workStart"),
               workEnd: form.get("workEnd"),
+              lunchStart: "11:50",
+              lunchEnd: "13:10",
               maxDevices: Number(form.get("maxDevices") || 1),
             }),
           })
@@ -63,8 +67,8 @@ export function EmployeesManager() {
         <input name="employeeCode" required placeholder="Personel kodu" className={input} />
         <input name="department" placeholder="Birim" className={input} />
         <input name="title" placeholder="Unvan" className={input} />
-        <input name="workStart" type="time" defaultValue="08:00" className={input} />
-        <input name="workEnd" type="time" defaultValue="17:00" className={input} />
+        <input name="workStart" type="time" defaultValue="08:30" className={input} />
+        <input name="workEnd" type="time" defaultValue="16:45" className={input} />
         <input name="maxDevices" type="number" min={1} max={10} defaultValue={1} className={input} />
         <button className="min-h-11 rounded-xl bg-teal-800 font-semibold text-white">Personel ekle</button>
       </form>
@@ -73,7 +77,7 @@ export function EmployeesManager() {
           <Link key={row.id} href={`/admin/employees/${row.id}`} className="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200">
             <p className="font-semibold">{row.fullName}</p>
             <p className="text-sm text-slate-500">
-              {row.employeeCode} · {row.department ?? "Birim yok"} · {row.workStart}-{row.workEnd} · {row.active ? "Aktif" : "Pasif"}
+              {row.employeeCode} · {row.department ?? "Birim yok"} · {row.workStart}–{row.lunchStart} / {row.lunchEnd}–{row.workEnd} · {row.active ? "Aktif" : "Pasif"}
             </p>
           </Link>
         ))}

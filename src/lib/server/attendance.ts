@@ -397,6 +397,8 @@ export async function getMyStatus() {
     day: todayKey,
     workStart: employee.workStart,
     workEnd: employee.workEnd,
+    lunchStart: employee.lunchStart,
+    lunchEnd: employee.lunchEnd,
     now,
     timeZone,
   });

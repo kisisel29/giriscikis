@@ -13,6 +13,8 @@ type Payload = {
     active: boolean;
     workStart: string;
     workEnd: string;
+    lunchStart: string;
+    lunchEnd: string;
     maxDevices: number;
   };
   devices: { id: string; deviceName: string | null; active: boolean; pairedAt: string; lastSeenAt: string | null }[];
@@ -53,6 +55,8 @@ export function EmployeeDetail({ id }: { id: string }) {
               title: form.get("title"),
               workStart: form.get("workStart"),
               workEnd: form.get("workEnd"),
+              lunchStart: form.get("lunchStart"),
+              lunchEnd: form.get("lunchEnd"),
               maxDevices: Number(form.get("maxDevices")),
               active: form.get("active") === "on",
             }),
@@ -65,8 +69,10 @@ export function EmployeeDetail({ id }: { id: string }) {
         <input name="employeeCode" defaultValue={employee.employeeCode} className="min-h-11 rounded-xl border px-3" />
         <input name="department" defaultValue={employee.department ?? ""} className="min-h-11 rounded-xl border px-3" />
         <input name="title" defaultValue={employee.title ?? ""} className="min-h-11 rounded-xl border px-3" />
-        <input name="workStart" type="time" defaultValue={employee.workStart} className="min-h-11 rounded-xl border px-3" />
-        <input name="workEnd" type="time" defaultValue={employee.workEnd} className="min-h-11 rounded-xl border px-3" />
+        <input name="workStart" type="time" aria-label="Sabah mesai başı" defaultValue={employee.workStart} className="min-h-11 rounded-xl border px-3" />
+        <input name="lunchStart" type="time" aria-label="Öğle arası başlangıcı" defaultValue={employee.lunchStart} className="min-h-11 rounded-xl border px-3" />
+        <input name="lunchEnd" type="time" aria-label="Öğle arası bitişi" defaultValue={employee.lunchEnd} className="min-h-11 rounded-xl border px-3" />
+        <input name="workEnd" type="time" aria-label="Akşam mesai sonu" defaultValue={employee.workEnd} className="min-h-11 rounded-xl border px-3" />
         <input name="maxDevices" type="number" min={1} max={10} defaultValue={employee.maxDevices} className="min-h-11 rounded-xl border px-3" />
         <label className="flex items-center gap-2">
           <input name="active" type="checkbox" defaultChecked={employee.active} /> Aktif

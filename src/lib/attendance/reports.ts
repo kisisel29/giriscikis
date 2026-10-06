@@ -10,6 +10,8 @@ export type ReportEmployee = {
   department: string | null;
   workStart: string;
   workEnd: string;
+  lunchStart?: string | null;
+  lunchEnd?: string | null;
 };
 
 export type EmployeeReport = {
@@ -75,6 +77,8 @@ export function buildReports(input: {
           day,
           workStart: employee.workStart,
           workEnd: employee.workEnd,
+          lunchStart: employee.lunchStart,
+          lunchEnd: employee.lunchEnd,
           now: input.now,
           timeZone,
         }),
