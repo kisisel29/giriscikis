@@ -8,7 +8,6 @@ type Result = {
   entry: { name: string; url: string; qr: string };
   exit: { name: string; url: string; qr: string };
   employeeCode: string;
-  pairingCode: string;
 };
 
 const field = "min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-3";
@@ -33,15 +32,13 @@ export function SetupWizard() {
       <main className="mx-auto grid max-w-3xl gap-4 px-4 py-8">
         <h1 className="text-3xl font-semibold">Kurulum tamam</h1>
         <p className="text-slate-600">
-          NFC 1 üzerine giriş adresini, NFC 2 üzerine çıkış adresini yazın. Üçüncü etiket şimdilik boş kalır. Eşleştirme kodu yalnızca bu ekranda görünür.
+          NFC 1 üzerine giriş adresini, NFC 2 üzerine çıkış adresini yazın. Üçüncü etiket şimdilik boş kalır. İlk telefonda personel kodu sorulur.
         </p>
         <TagCard title="NFC 1 · Giriş / dönüş" name={result.entry.name} url={result.entry.url} qr={result.entry.qr} />
         <TagCard title="NFC 2 · Çıkış" name={result.exit.name} url={result.exit.url} qr={result.exit.qr} />
         <section className="rounded-3xl bg-white p-4 ring-1 ring-slate-200">
           <p className="text-sm text-slate-500">İlk personel</p>
           <p className="text-xl font-semibold">{result.employeeCode}</p>
-          <p className="mt-3 text-sm text-slate-500">Tek kullanımlık eşleştirme kodu · 24 saat</p>
-          <p className="text-4xl font-semibold tracking-[0.2em]">{result.pairingCode}</p>
         </section>
       </main>
     );

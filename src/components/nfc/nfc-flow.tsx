@@ -133,7 +133,6 @@ export function NfcFlow({ publicId }: { publicId: string }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           employeeCode: String(formData.get("employeeCode") ?? ""),
-          pairingCode: String(formData.get("pairingCode") ?? ""),
         }),
       });
       const payload = (await response.json()) as { error?: string };
@@ -200,14 +199,10 @@ export function NfcFlow({ publicId }: { publicId: string }) {
           }}
         >
           <h1 className="text-3xl font-semibold">Cihazı bağla</h1>
-          <p className="text-slate-600">Bu telefon ilk kez kullanılıyor. Personel kodunuzu ve yöneticiden aldığınız kodu girin.</p>
+          <p className="text-slate-600">Bu telefon ilk kez kullanılıyor. Personel kodunuzu girin.</p>
           <label className="grid gap-1 text-sm font-medium">
             Personel kodu
             <input name="employeeCode" required autoCapitalize="characters" className="min-h-14 rounded-2xl border border-slate-200 px-4 text-lg" />
-          </label>
-          <label className="grid gap-1 text-sm font-medium">
-            Tek kullanımlık eşleştirme kodu
-            <input name="pairingCode" required inputMode="numeric" autoComplete="one-time-code" maxLength={6} className="min-h-14 rounded-2xl border border-slate-200 px-4 text-lg tracking-[0.3em]" />
           </label>
           {pairError ? <p className="text-rose-700">{pairError}</p> : null}
           <button disabled={saving} className="min-h-14 rounded-2xl bg-teal-800 font-semibold text-white disabled:opacity-60">

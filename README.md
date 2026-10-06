@@ -27,7 +27,7 @@ Web NFC API kullanılmaz. Tarayıcının etiketin donanım UID değerini okumas�
 ## Supabase projesi
 
 1. [Supabase](https://supabase.com/dashboard) üzerinde yeni bir proje oluşturun.
-2. **Authentication → Providers** bölümünde **Anonymous Sign-Ins** özelliğini açın. Personel her gün şifre girmez; tarayıcı için anonim bir oturum açılır ve bu oturum bir personele ancak eşleştirme koduyla bağlanır.
+2. **Authentication → Providers** bölümünde **Anonymous Sign-Ins** özelliğini açın. Personel her gün şifre girmez; tarayıcı için anonim bir oturum açılır ve bu oturum ilk dokunuşta personel koduyla bağlanır.
 3. **Project Settings → API** ekranından şu değerleri alın:
    - Project URL
    - `anon` / publishable public key
@@ -75,7 +75,7 @@ Sihirbaz sırasıyla şunları ister:
 7. İlk yönetici adı, e-postası ve şifresi
 8. İlk personel, personel kodu, birim ve unvan
 
-Kayıttan sonra ekranda iki adres ve bir eşleştirme kodu görünür. Kod 24 saat geçerlidir, tek kullanımlıktır ve veritabanında yalnızca hash olarak durur. Bu ekranı kapatınca kod bir daha gösterilmez; gerekirse personel sayfasından yenisini üretin.
+Kayıttan sonra ekranda iki NFC adresi görünür. İlk telefonda personel yalnızca kendi personel kodunu girer.
 
 Yönetici e-posta ve şifreyle `/admin/login` adresinden girer. Anonim personel oturumu ile yönetici oturumu aynı tarayıcı profilini paylaşmamalıdır. Yönetici girişi, o tarayıcıdaki personel oturumunun yerini alır.
 
@@ -112,11 +112,10 @@ QR kod, test için aynı adresi açar. Asıl kullanım NFC etiketidir.
 
 ## Personeli eşleştirme
 
-1. Yönetici personel sayfasında **Yeni eşleştirme kodu oluştur** der.
-2. Personel giriş etiketine telefonunu yaklaştırır.
-3. İstenirse personel kodunu ve 6 haneli kodu girer.
-4. Aynı tarayıcı açık kaldığı sürece bir daha sorulmaz.
-5. Tarayıcı verisi silinirse yeni anonim kullanıcı oluşur ve eşleştirme yeniden gerekir.
+1. Personel giriş etiketine telefonunu yaklaştırır.
+2. İlk seferde personel kodunu girer.
+3. Aynı tarayıcı açık kaldığı sürece bir daha sorulmaz.
+4. Tarayıcı verisi silinirse eşleştirme yeniden gerekir. Personel kodu yeterlidir.
 
 Varsayılan cihaz limiti 1'dir. Yönetici personel bazında artırabilir veya **Cihaz bağlantısını kaldır** diyebilir. Personel silinmez; `active = false` yapılır.
 

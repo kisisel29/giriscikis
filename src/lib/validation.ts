@@ -36,7 +36,6 @@ export const exitBodySchema = nfcBodySchema.extend({
 
 export const pairingBodySchema = z.object({
   employeeCode: z.string().trim().min(2).max(32),
-  pairingCode: z.string().regex(/^\d{6}$/, "Eşleştirme kodu 6 haneli olmalıdır."),
 });
 
 export const setupSchema = z.object({

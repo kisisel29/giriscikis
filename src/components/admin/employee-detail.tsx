@@ -22,7 +22,6 @@ type Payload = {
 export function EmployeeDetail({ id }: { id: string }) {
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [code, setCode] = useState<string | null>(null);
 
   const load = useCallback(() => api<Payload>(`/api/admin/employees/${id}`).then(setData), [id]);
 
@@ -75,22 +74,8 @@ export function EmployeeDetail({ id }: { id: string }) {
         <button className="min-h-11 rounded-xl bg-teal-800 font-semibold text-white">Kaydet</button>
       </form>
       <section className="rounded-3xl bg-white p-4 ring-1 ring-slate-200">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Cihazlar</h2>
-          <button
-            type="button"
-            className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white"
-            onClick={() => {
-              void api<{ code: string }>(`/api/admin/employees/${id}/pairing-code`, { method: "POST" })
-                .then((result) => setCode(result.code))
-                .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Kod üretilemedi."));
-            }}
-          >
-            Yeni eşleştirme kodu oluştur
-          </button>
-        </div>
-        {code ? <p className="mt-3 text-3xl font-semibold tracking-[0.2em]">{code}</p> : null}
-        <p className="mt-1 text-sm text-slate-500">Kod 24 saat geçerlidir ve bir kez kullanılır. Düz metin olarak saklanmaz.</p>
+        <h2 className="text-lg font-semibold">Cihazlar</h2>
+        <p className="mt-1 text-sm text-slate-500">Telefon ilk kez giriş etiketine dokununca personel koduyla bağlanır.</p>
         {data.devices.map((device) => (
           <div key={device.id} className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
             <div>

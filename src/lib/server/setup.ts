@@ -2,8 +2,7 @@ import "server-only";
 import QRCode from "qrcode";
 import { ApiError } from "@/lib/api-error";
 import { appBaseUrl } from "@/lib/env";
-import { generatePairingCode, hashPairingCode, PAIRING_TTL_MS } from "@/lib/pairing";
-import { createAdminClient, pairingPepper } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeEmployeeCode } from "@/lib/text";
 import { parseBody, setupSchema } from "@/lib/validation";
 import { mapTag, unwrap } from "@/lib/server/rows";
@@ -132,23 +131,11 @@ export async function runSetup(body: unknown, request: Request) {
   }
   const employeeId = employee && typeof employee === "object" && "id" in employee ? String((employee as { id: unknown }).id) : "";
   if (!employeeId) throw new ApiError("Personel kaydı oluşturulamadı.", 500);
-  const pairing = generatePairingCode();
-  const pairingInsert = await admin.from("pairing_codes").insert({
-    employee_id: employeeId,
-    code_hash: hashPairingCode(pairing, pairingPepper()),
-    expires_at: new Date(Date.now() + PAIRING_TTL_MS).toISOString(),
-  });
-  if (pairingInsert.error) {
-    console.error(pairingInsert.error);
-    throw new ApiError("Eşleştirme kodu oluşturulamadı.", 500);
-  }
 
   return {
     organizationName: input.organizationName,
     entry: { name: entry.name, url: entryUrl, qr: await QRCode.toDataURL(entryUrl, { margin: 1, width: 280 }) },
     exit: { name: exit.name, url: exitUrl, qr: await QRCode.toDataURL(exitUrl, { margin: 1, width: 280 }) },
     employeeCode: code,
-    pairingCode: pairing,
-    pairingExpiresHours: 24,
   };
 }
