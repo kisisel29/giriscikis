@@ -27,6 +27,7 @@ export const locationBodySchema = z.object({
 
 export const nfcBodySchema = locationBodySchema.extend({
   tagPublicId: z.uuid("NFC etiketi tanınmadı."),
+  employeeCode: z.string().trim().min(2).max(32).optional(),
 });
 
 export const exitBodySchema = nfcBodySchema.extend({

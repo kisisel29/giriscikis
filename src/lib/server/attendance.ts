@@ -4,6 +4,8 @@ import { assessExit, assessNfc, assessReentry, orderExitReasons, recordedMessage
 import { deriveCurrentPresence, eventsOnDay } from "@/lib/attendance/state";
 import { calculateDay } from "@/lib/attendance/calculations";
 import { measureLocation } from "@/lib/attendance/location";
+import { isDeviceRecognized } from "@/lib/attendance/trust";
+import { linkDevice } from "@/lib/server/pairing";
 import { describeMovement, greeting, STATE_LABELS } from "@/lib/attendance/labels";
 import type { DomainEvent, ExitReasonOption, LocationFix, NfcAssessment, NfcSuccessResponse } from "@/lib/attendance/types";
 import { dayKey, formatDuration, formatTime, previousDayKey, safeTimeZone, shouldSuggestEndOfDay, startOfDay } from "@/lib/time";
@@ -112,7 +114,7 @@ function failure(assessment: NfcAssessment): NfcSuccessResponse | null {
     case "LOCATION_OUTSIDE":
       throw new ApiError("İşlem kurum konumu dışında olduğunuz için kaydedilemedi.", 400);
     case "PAIR_REQUIRED":
-      return { action: "PAIR_REQUIRED", message: "Cihazınız henüz bir personele bağlanmamış." };
+      return { action: "PAIR_REQUIRED", message: "Personel kodunuzu girin." };
     default:
       return null;
   }
@@ -181,34 +183,71 @@ type Prepared = {
   events: DomainEvent[];
   location: LocationFix;
   duplicate: boolean;
+  recognized: boolean;
+  confirmed: boolean;
   state: ReturnType<typeof deriveCurrentPresence>;
 };
 
+async function recognitionCounts(employeeId: string): Promise<{ entries: number; exits: number }> {
+  const admin = createAdminClient();
+  const entries = await admin
+    .from("attendance_events")
+    .select("id", { count: "exact", head: true })
+    .eq("employee_id", employeeId)
+    .eq("event_type", "ENTRY");
+  const exits = await admin
+    .from("attendance_events")
+    .select("id", { count: "exact", head: true })
+    .eq("employee_id", employeeId)
+    .in("event_type", ["EXIT", "END_OF_DAY"]);
+  if (entries.error || exits.error) throw new ApiError("Veritabanı işlemi başarısız.", 500);
+  return { entries: entries.count ?? 0, exits: exits.count ?? 0 };
+}
+
 async function prepare(
   userId: string,
-  input: { tagPublicId: string; latitude: number | null; longitude: number | null; accuracy: number | null },
+  input: { tagPublicId: string; latitude: number | null; longitude: number | null; accuracy: number | null; employeeCode?: string },
 ): Promise<Prepared> {
   await assertRateLimit(userId);
   const settings = await loadSettings();
   const timeZone = safeTimeZone(settings.timezone);
   const now = new Date();
   const tag = await loadTag(input.tagPublicId);
-  const device = await loadDevice(userId);
+  let device = await loadDevice(userId);
+  if (input.employeeCode) {
+    const linked = await linkDevice(userId, input.employeeCode, "Telefon");
+    device = linked;
+  }
   const employee = device ? await loadEmployee(device.employeeId) : null;
   if (device) await touchDevice(device.id);
   const events = employee ? await loadRecentEvents(employee.id, now, timeZone) : [];
+  const counts = employee ? await recognitionCounts(employee.id) : { entries: 0, exits: 0 };
+  const recognized = isDeviceRecognized(counts.entries, counts.exits);
   const location = locationOf(settings, input);
   const duplicate = employee && tag ? await isDuplicate(employee.id, tag.id, settings.duplicateWindowSeconds) : false;
   const state = deriveCurrentPresence(events, now, timeZone);
-  return { settings, timeZone, now, tag, device, employee, events, location, duplicate, state };
+  return {
+    settings,
+    timeZone,
+    now,
+    tag,
+    device,
+    employee,
+    events,
+    location,
+    duplicate,
+    recognized,
+    confirmed: Boolean(input.employeeCode),
+    state,
+  };
 }
 
 function context(prepared: Prepared) {
   return {
     tag: prepared.tag,
-    paired: Boolean(prepared.device && prepared.employee),
+    paired: Boolean(prepared.device && prepared.employee && (prepared.recognized || prepared.confirmed)),
     employeeActive: prepared.employee?.active ?? false,
-    locationRequired: prepared.settings.locationVerificationRequired,
+    locationRequired: false,
     location: prepared.location,
     duplicate: prepared.duplicate,
     state: prepared.state.state,

@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { ensureDeviceSession } from "@/lib/supabase/browser";
 import type { ExitReasonOption, NfcSuccessResponse } from "@/lib/attendance/types";
 
-type Coords = { latitude: number | null; longitude: number | null; accuracy: number | null };
 type Phase =
   | { kind: "loading"; text: string }
   | { kind: "error"; text: string }
@@ -14,22 +13,6 @@ type Phase =
   | { kind: "reentry" }
   | { kind: "pair" }
   | { kind: "exit"; employeeName: string; suggestEndOfDay: boolean; reasons: ExitReasonOption[] };
-
-async function locate(): Promise<Coords> {
-  if (!navigator.geolocation) return { latitude: null, longitude: null, accuracy: null };
-  return new Promise((resolve) => {
-    navigator.geolocation.getCurrentPosition(
-      (position) =>
-        resolve({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-        }),
-      () => resolve({ latitude: null, longitude: null, accuracy: null }),
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
-    );
-  });
-}
 
 async function postJson(url: string, body: unknown): Promise<{ ok: boolean; payload: NfcSuccessResponse & { error?: string } }> {
   const response = await fetch(url, {
@@ -49,16 +32,24 @@ export function NfcFlow({ publicId }: { publicId: string }) {
   const [pending, setPending] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [pairError, setPairError] = useState<string | null>(null);
-  const coords = useRef<Coords>({ latitude: null, longitude: null, accuracy: null });
+  const employeeCode = useRef("");
   const timer = useRef<number | null>(null);
 
   async function tap(path: string, extra?: Record<string, unknown>) {
     await ensureDeviceSession();
-    return postJson(path, { tagPublicId: publicId, ...coords.current, ...extra });
+    return postJson(path, {
+      tagPublicId: publicId,
+      latitude: null,
+      longitude: null,
+      accuracy: null,
+      ...(employeeCode.current ? { employeeCode: employeeCode.current } : {}),
+      ...extra,
+    });
   }
 
   function apply(result: { ok: boolean; payload: NfcSuccessResponse & { error?: string } }) {
     if (!result.ok) {
+      employeeCode.current = "";
       setPhase({ kind: "error", text: result.payload.error ?? "İşlem kaydedilemedi." });
       return;
     }
@@ -81,7 +72,6 @@ export function NfcFlow({ publicId }: { publicId: string }) {
 
   async function start() {
     try {
-      coords.current = await locate();
       apply(await tap("/api/attendance/nfc"));
     } catch (error) {
       setPhase({ kind: "error", text: error instanceof Error ? error.message : "İşlem tamamlanamadı." });
@@ -126,21 +116,9 @@ export function NfcFlow({ publicId }: { publicId: string }) {
 
   async function pair(formData: FormData) {
     setSaving(true);
+    setPairError(null);
+    employeeCode.current = String(formData.get("employeeCode") ?? "").trim();
     try {
-      await ensureDeviceSession();
-      const response = await fetch("/api/pairing", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          employeeCode: String(formData.get("employeeCode") ?? ""),
-        }),
-      });
-      const payload = (await response.json()) as { error?: string };
-      if (!response.ok) {
-        setPairError(payload.error ?? "Eşleştirme başarısız.");
-        return;
-      }
-      setPairError(null);
       apply(await tap("/api/attendance/nfc"));
     } catch (error) {
       setPhase({ kind: "error", text: error instanceof Error ? error.message : "Eşleştirme başarısız." });
@@ -199,7 +177,7 @@ export function NfcFlow({ publicId }: { publicId: string }) {
           }}
         >
           <h1 className="text-3xl font-semibold">Cihazı bağla</h1>
-          <p className="text-slate-600">Bu telefon ilk kez kullanılıyor. Personel kodunuzu girin.</p>
+          <p className="text-slate-600">Personel kodunuzu girin. Üç giriş ve üç çıkıştan sonra bu telefon kod sormadan tanınır.</p>
           <label className="grid gap-1 text-sm font-medium">
             Personel kodu
             <input name="employeeCode" required autoCapitalize="characters" className="min-h-14 rounded-2xl border border-slate-200 px-4 text-lg" />

@@ -37,7 +37,7 @@ create table public.organization_settings (
   latitude double precision not null,
   longitude double precision not null,
   allowed_radius_meters integer not null default 150,
-  location_verification_required boolean not null default true,
+  location_verification_required boolean not null default false,
   timezone text not null default 'Europe/Istanbul',
   default_work_start time not null default '08:00',
   default_work_end time not null default '17:00',

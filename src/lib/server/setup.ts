@@ -47,7 +47,7 @@ export async function runSetup(body: unknown, request: Request) {
           latitude: input.latitude,
           longitude: input.longitude,
           allowed_radius_meters: input.allowedRadiusMeters,
-          location_verification_required: true,
+          location_verification_required: false,
           timezone: "Europe/Istanbul",
           default_work_start: input.workStart,
           default_work_end: input.workEnd,

@@ -7,6 +7,7 @@ import { buildPresence } from "@/lib/attendance/presence";
 import { buildReports } from "@/lib/attendance/reports";
 import { findDayAnomalies } from "@/lib/attendance/review";
 import { deriveCurrentPresence, deriveState } from "@/lib/attendance/state";
+import { isDeviceRecognized } from "@/lib/attendance/trust";
 import type { DomainEvent, ExitReasonOption, LocationFix } from "@/lib/attendance/types";
 import { hashPairingCode, verifyPairingCode } from "@/lib/pairing";
 import { parseCustomExitReason } from "@/lib/text";
@@ -108,6 +109,14 @@ describe("senaryo 4 6 7 8", () => {
   it("mesai bitince yeniden giriş onayı ister ve onayda ENTRY üretir", () => {
     expect(assessNfc({ ...base, state: "FINISHED" }).action).toBe("CONFIRM_REENTRY");
     expect(assessReentry({ ...base, state: "FINISHED" })).toMatchObject({ action: "CREATE", eventType: "ENTRY" });
+  });
+});
+
+describe("cihaz tanıma", () => {
+  it("üç giriş ve üç çıkıştan sonra kod sorulmaz", () => {
+    expect(isDeviceRecognized(2, 3)).toBe(false);
+    expect(isDeviceRecognized(3, 2)).toBe(false);
+    expect(isDeviceRecognized(3, 3)).toBe(true);
   });
 });
 
