@@ -4,24 +4,60 @@ import { useEffect, useRef, useState } from "react";
 import { ensureDeviceSession } from "@/lib/supabase/browser";
 import type { ExitReasonOption, NfcSuccessResponse } from "@/lib/attendance/types";
 
-const SAVED_CODE_KEY = "isyeri-personel-kodu";
+const DEVICE_KEY = "isyeri-cihaz-kodu";
 const CODE_LENGTH = 3;
 
-function readSavedCode(): string {
+type DeviceMemory = { code: string; count: number };
+type NfcPayload = NfcSuccessResponse & { error?: string; deviceUses?: number; employeeCode?: string | null };
+
+function readMemory(): DeviceMemory | null {
   try {
-    const value = localStorage.getItem(SAVED_CODE_KEY)?.trim() ?? "";
-    return /^\d{3}$/.test(value) ? value : "";
+    const raw = localStorage.getItem(DEVICE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { code?: unknown; count?: unknown };
+    if (typeof parsed.code === "string" && /^\d{3}$/.test(parsed.code) && typeof parsed.count === "number" && parsed.count >= 0) {
+      return { code: parsed.code, count: parsed.count };
+    }
   } catch {
-    return "";
+    return null;
   }
+  return null;
 }
 
-function rememberCode(value: string) {
+function writeMemory(memory: DeviceMemory) {
   try {
-    if (/^\d{3}$/.test(value)) localStorage.setItem(SAVED_CODE_KEY, value);
+    localStorage.setItem(DEVICE_KEY, JSON.stringify(memory));
   } catch {
     // Telefon depolaması kapalıysa kod yalnızca bu oturumda kalır.
   }
+}
+
+function clearMemory() {
+  try {
+    localStorage.removeItem(DEVICE_KEY);
+  } catch {
+    // Depolama kapalıysa silinecek kayıt da yoktur.
+  }
+}
+
+function trustedCode(): string {
+  const memory = readMemory();
+  return memory && isRemembered(memory.count) ? memory.code : "";
+}
+
+function isRemembered(count: number): boolean {
+  return count > 3;
+}
+
+function rememberDevice(sentCode: string, payload: NfcPayload) {
+  const fromServer = payload.employeeCode?.trim() ?? "";
+  const code = /^\d{3}$/.test(fromServer) ? fromServer : sentCode;
+  if (!/^\d{3}$/.test(code)) return;
+  const serverCount = typeof payload.deviceUses === "number" ? payload.deviceUses : 0;
+  const current = readMemory();
+  const same = current?.code === code ? current.count : 0;
+  const count = Math.max(serverCount, same);
+  if (count > 0) writeMemory({ code, count });
 }
 
 type Phase =
@@ -35,13 +71,13 @@ type Phase =
   | { kind: "late" }
   | { kind: "exit"; employeeName: string; suggestEndOfDay: boolean; reasons: ExitReasonOption[] };
 
-async function postJson(url: string, body: unknown): Promise<{ ok: boolean; payload: NfcSuccessResponse & { error?: string } }> {
+async function postJson(url: string, body: unknown): Promise<{ ok: boolean; payload: NfcPayload }> {
   const response = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  const payload = (await response.json()) as NfcSuccessResponse & { error?: string };
+  const payload = (await response.json()) as NfcPayload;
   return { ok: response.ok, payload };
 }
 
@@ -69,13 +105,13 @@ export function NfcFlow({ publicId }: { publicId: string }) {
     });
   }
 
-  function apply(result: { ok: boolean; payload: NfcSuccessResponse & { error?: string } }) {
+  function apply(result: { ok: boolean; payload: NfcPayload }) {
     if (!result.ok) {
       employeeCode.current = "";
       setPhase({ kind: "error", text: result.payload.error ?? "İşlem kaydedilemedi." });
       return;
     }
-    if (/^\d{3}$/.test(employeeCode.current)) rememberCode(employeeCode.current);
+    rememberDevice(employeeCode.current, result.payload);
     const payload = result.payload;
     if (payload.action === "RECORDED") setPhase({ kind: "recorded", message: payload.message, time: payload.eventTime });
     else if (payload.action === "ALREADY_INSIDE") setPhase({ kind: "inside" });
@@ -100,14 +136,16 @@ export function NfcFlow({ publicId }: { publicId: string }) {
 
   async function start() {
     try {
-      employeeCode.current = "";
+      const saved = trustedCode();
+      employeeCode.current = saved;
       const result = await tap("/api/attendance/nfc");
-      if (result.ok && result.payload.action === "PAIR_REQUIRED") {
-        const saved = readSavedCode();
-        if (saved) {
-          await submitCode(saved);
-          return;
-        }
+      if (saved && !result.ok) {
+        clearMemory();
+        employeeCode.current = "";
+        setCode("");
+        setPairError(result.payload.error ?? "Personel kodu bulunamadı.");
+        setPhase({ kind: "pair" });
+        return;
       }
       apply(result);
     } catch (error) {
@@ -176,7 +214,7 @@ export function NfcFlow({ publicId }: { publicId: string }) {
       const result = await tap("/api/attendance/nfc");
       if (!result.ok) {
         employeeCode.current = "";
-        if (readSavedCode() === next) localStorage.removeItem(SAVED_CODE_KEY);
+        if (readMemory()?.code === next) clearMemory();
         setCode("");
         setPairError(result.payload.error ?? "Personel kodu bulunamadı.");
         setPhase({ kind: "pair" });
@@ -247,7 +285,7 @@ export function NfcFlow({ publicId }: { publicId: string }) {
           }}
         >
           <h1 className="text-3xl font-semibold">Personel kodu</h1>
-          <p className="text-slate-600">3 haneli kodunuzu yazın. Üçüncü hane girilince kayıt alınır. Üç geliş ve üç çıkıştan sonra bu telefon kod sormadan tanınır.</p>
+          <p className="text-slate-600">3 haneli kodunuzu yazın. Üçüncü hane girilince kayıt alınır. Bu telefonda aynı kodla üçten fazla kayıt olunca kod bir daha sorulmaz.</p>
           <label className="grid gap-1 text-sm font-medium">
             Personel kodu
             <input

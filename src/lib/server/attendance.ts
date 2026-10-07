@@ -193,26 +193,16 @@ type Prepared = {
   duplicate: boolean;
   recognized: boolean;
   confirmed: boolean;
+  recordCount: number;
   reasons: ExitReasonOption[];
   state: ReturnType<typeof deriveCurrentPresence>;
 };
 
-async function recognitionCounts(employeeId: string): Promise<{ entries: number; exits: number }> {
+async function recognitionCount(employeeId: string): Promise<number> {
   const admin = createAdminClient();
-  const [entries, exits] = await Promise.all([
-    admin
-      .from("attendance_events")
-      .select("id", { count: "exact", head: true })
-      .eq("employee_id", employeeId)
-      .in("event_type", ["ENTRY", "RETURN"]),
-    admin
-      .from("attendance_events")
-      .select("id", { count: "exact", head: true })
-      .eq("employee_id", employeeId)
-      .in("event_type", ["EXIT", "END_OF_DAY"]),
-  ]);
-  if (entries.error || exits.error) throw new ApiError("Veritabanı işlemi başarısız.", 500);
-  return { entries: entries.count ?? 0, exits: exits.count ?? 0 };
+  const result = await admin.from("attendance_events").select("id", { count: "exact", head: true }).eq("employee_id", employeeId);
+  if (result.error) throw new ApiError("Veritabanı işlemi başarısız.", 500);
+  return result.count ?? 0;
 }
 
 async function prepare(
@@ -236,10 +226,10 @@ async function prepare(
   const [employee, events, counts, duplicate] = await Promise.all([
     device ? loadEmployee(device.employeeId) : Promise.resolve(null),
     device ? loadRecentEvents(device.employeeId, now, timeZone) : Promise.resolve([]),
-    device ? recognitionCounts(device.employeeId) : Promise.resolve({ entries: 0, exits: 0 }),
+    device ? recognitionCount(device.employeeId) : Promise.resolve(0),
     device && tag ? isDuplicate(device.employeeId, tag.id, settings.duplicateWindowSeconds) : Promise.resolve(false),
   ]);
-  const recognized = isDeviceRecognized(counts.entries, counts.exits);
+  const recognized = isDeviceRecognized(counts);
   const location = locationOf(settings, input);
   const state = deriveCurrentPresence(events, now, timeZone, employee?.workEnd ?? settings.defaultWorkEnd);
   return {
@@ -254,6 +244,7 @@ async function prepare(
     duplicate,
     recognized,
     confirmed: Boolean(input.employeeCode),
+    recordCount: counts,
     reasons,
     state,
   };
@@ -317,6 +308,13 @@ async function respond(prepared: Prepared, assessment: NfcAssessment): Promise<N
   throw new ApiError("İşlem tamamlanamadı.", 400);
 }
 
+function stamp(prepared: Prepared, body: NfcSuccessResponse): NfcSuccessResponse {
+  return Object.assign(body, {
+    deviceUses: prepared.recordCount + (body.action === "RECORDED" ? 1 : 0),
+    employeeCode: prepared.employee?.employeeCode ?? null,
+  });
+}
+
 export async function handleNfcTap(body: unknown): Promise<NfcSuccessResponse> {
   const input = parseBody(nfcBodySchema, body);
   const user = await requireUser();
@@ -331,7 +329,7 @@ export async function handleNfcTap(body: unknown): Promise<NfcSuccessResponse> {
       timeZone: prepared.timeZone,
     };
     if (shouldAskLateReason(arrival) && !input.lateAnswer) {
-      return { action: "ASK_LATE_REASON", message: "Mesaiye geç kalındı. Sebep belirtmek ister misiniz?" };
+      return stamp(prepared, { action: "ASK_LATE_REASON", message: "Mesaiye geç kalındı. Sebep belirtmek ister misiniz?" });
     }
     const lateReason =
       input.lateAnswer === "yes" ? sanitizePlainText(input.lateReason, { min: 2, max: 250, label: "Geç kalma sebebi" }) : null;
@@ -347,14 +345,14 @@ export async function handleNfcTap(body: unknown): Promise<NfcSuccessResponse> {
     });
     const morningStart =
       isFirstArrival(arrival) && clockToMinutes(formatTime(saved.eventTime, prepared.timeZone)) >= 7 * 60;
-    return {
+    return stamp(prepared, {
       action: "RECORDED",
       eventType: saved.eventType,
       eventTime: formatTime(saved.eventTime, prepared.timeZone),
       message: morningStart ? "Mesaiye başladınız" : recordedMessage(saved.eventType),
-    };
+    });
   }
-  return respond(prepared, assessment);
+  return stamp(prepared, await respond(prepared, assessment));
 }
 
 export async function handleExit(body: unknown): Promise<NfcSuccessResponse> {
@@ -362,7 +360,7 @@ export async function handleExit(body: unknown): Promise<NfcSuccessResponse> {
   const user = await requireUser();
   const prepared = await prepare(user.id, input);
   const assessment = assessExit(context(prepared));
-  if (assessment.action !== "SELECT_EXIT_REASON") return respond(prepared, assessment);
+  if (assessment.action !== "SELECT_EXIT_REASON") return stamp(prepared, await respond(prepared, assessment));
   if (!prepared.employee || !prepared.tag) throw new ApiError("Kayıt oluşturulamadı.", 500);
   const preset = input.exitReasonId ? prepared.reasons.find((reason) => reason.id === input.exitReasonId) ?? null : null;
   if (input.exitReasonId && !preset) throw new ApiError("Seçilen çıkış nedeni bulunamadı.", 400);
@@ -379,12 +377,12 @@ export async function handleExit(body: unknown): Promise<NfcSuccessResponse> {
     customExitReason: resolved.customExitReason,
     exitCategory: resolved.exitCategory,
   });
-  return {
+  return stamp(prepared, {
     action: "RECORDED",
     eventType: saved.eventType,
     eventTime: formatTime(saved.eventTime, prepared.timeZone),
     message: recordedMessage(saved.eventType),
-  };
+  });
 }
 
 export async function handleReentry(body: unknown): Promise<NfcSuccessResponse> {
@@ -392,7 +390,7 @@ export async function handleReentry(body: unknown): Promise<NfcSuccessResponse> 
   const user = await requireUser();
   const prepared = await prepare(user.id, input);
   const assessment = assessReentry(context(prepared));
-  if (assessment.action !== "CREATE") return respond(prepared, assessment);
+  if (assessment.action !== "CREATE") return stamp(prepared, await respond(prepared, assessment));
   if (!prepared.employee || !prepared.tag) throw new ApiError("Kayıt oluşturulamadı.", 500);
   const saved = await insertEvent({
     employeeId: prepared.employee.id,
@@ -403,12 +401,12 @@ export async function handleReentry(body: unknown): Promise<NfcSuccessResponse> 
     latitude: input.latitude,
     longitude: input.longitude,
   });
-  return {
+  return stamp(prepared, {
     action: "RECORDED",
     eventType: "ENTRY",
     eventTime: formatTime(saved.eventTime, prepared.timeZone),
     message: recordedMessage("ENTRY"),
-  };
+  });
 }
 
 export async function getMyStatus() {
