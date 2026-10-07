@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState } from "react";
 import { downloadFile, api } from "@/components/admin/api";
+import { dayKey, endOfWeek, startOfWeek } from "@/lib/time";
 
 type Day = {
   date: string;
@@ -36,13 +37,48 @@ type Report = {
   officialDetails: { dateLabel: string; label: string; custom: string | null; duration: string }[];
 };
 
+function shiftDay(key: string, days: number): string {
+  return dayKey(new Date(new Date(`${key}T12:00:00+03:00`).getTime() + days * 24 * 60 * 60 * 1000));
+}
+
+function labelDay(key: string): string {
+  const [year, month, day] = key.split("-");
+  if (!year || !month || !day) return key;
+  return `${day}.${month}.${year}`;
+}
+
+function DayField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid gap-1 text-sm font-medium">
+      <span>{label}</span>
+      <span className="flex flex-wrap items-center gap-2">
+        <button type="button" className="min-h-11 rounded-xl bg-white px-3 ring-1 ring-slate-200" onClick={() => onChange(shiftDay(value, -1))}>
+          Önceki gün
+        </button>
+        <input type="date" value={value} aria-label={label} onChange={(event) => onChange(event.target.value)} className="min-h-11 rounded-xl border px-3" />
+        <button type="button" className="min-h-11 rounded-xl bg-white px-3 ring-1 ring-slate-200" onClick={() => onChange(shiftDay(value, 1))}>
+          Sonraki gün
+        </button>
+        <span className="text-slate-600">{labelDay(value)}</span>
+      </span>
+    </div>
+  );
+}
+
 export function ReportView({ period }: { period: "daily" | "weekly" | "monthly" }) {
-  const today = new Date();
-  const [date, setDate] = useState(today.toISOString().slice(0, 10));
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth() + 1);
+  const todayKey = dayKey(new Date());
+  const [date, setDate] = useState(todayKey);
+  const [from, setFrom] = useState(dayKey(startOfWeek(new Date())));
+  const [to, setTo] = useState(dayKey(endOfWeek(new Date())));
+  const [anchor, setAnchor] = useState(todayKey);
   const [rows, setRows] = useState<Report[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,16 +87,17 @@ export function ReportView({ period }: { period: "daily" | "weekly" | "monthly" 
   if (period === "daily") params.set("date", date);
   if (period === "weekly" && from && to) {
     params.set("preset", "custom");
-    params.set("from", from);
-    params.set("to", to);
+    params.set("from", from <= to ? from : to);
+    params.set("to", from <= to ? to : from);
   }
   if (period === "monthly") {
-    params.set("year", String(year));
-    params.set("month", String(month));
+    params.set("year", anchor.slice(0, 4));
+    params.set("month", String(Number(anchor.slice(5, 7))));
   }
   const query = params.toString();
 
   useEffect(() => {
+    setError(null);
     void api<{ reports: Report[] }>(`/api/admin/reports?${query}`)
       .then((data) => setRows(data.reports))
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Rapor alınamadı."));
@@ -79,18 +116,24 @@ export function ReportView({ period }: { period: "daily" | "weekly" | "monthly" 
           </button>
         </div>
       </div>
-      {period === "daily" ? <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="min-h-11 max-w-xs rounded-xl border px-3" /> : null}
+      {period === "daily" ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <DayField label="Rapor günü" value={date} onChange={setDate} />
+          <button type="button" className="min-h-11 rounded-xl bg-white px-3 ring-1 ring-slate-200" onClick={() => setDate(todayKey)}>
+            Bugün
+          </button>
+        </div>
+      ) : null}
       {period === "weekly" ? (
-        <div className="flex flex-wrap gap-2">
-          <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="min-h-11 rounded-xl border px-3" />
-          <input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="min-h-11 rounded-xl border px-3" />
-          <p className="self-center text-sm text-slate-500">Boş bırakılırsa bu hafta, Pazartesi-Pazar.</p>
+        <div className="flex flex-wrap items-end gap-4">
+          <DayField label="Başlangıç günü" value={from} onChange={setFrom} />
+          <DayField label="Bitiş günü" value={to} onChange={setTo} />
         </div>
       ) : null}
       {period === "monthly" ? (
-        <div className="flex gap-2">
-          <input type="number" value={month} min={1} max={12} onChange={(event) => setMonth(Number(event.target.value))} className="min-h-11 w-24 rounded-xl border px-3" />
-          <input type="number" value={year} onChange={(event) => setYear(Number(event.target.value))} className="min-h-11 w-32 rounded-xl border px-3" />
+        <div className="flex flex-wrap items-end gap-2">
+          <DayField label="Ayın herhangi bir günü" value={anchor} onChange={setAnchor} />
+          <p className="pb-3 text-sm text-slate-500">Seçilen günün ayı raporlanır.</p>
         </div>
       ) : null}
       {error ? <p className="text-rose-700">{error}</p> : null}
@@ -134,6 +177,13 @@ export function ReportView({ period }: { period: "daily" | "weekly" | "monthly" 
                         <p>
                           Mesai kapsamı {row.duty}. Fazla mesai {row.overtime}. Geç giriş {row.lateCount} ({row.late}). Erken çıkış {row.earlyCount} ({row.early}).
                         </p>
+                        {period !== "daily"
+                          ? row.days.map((item) => (
+                              <p key={item.date} className="mt-1">
+                                {item.dateLabel}: giriş {item.firstEntryLabel}, çıkış {item.lastExitLabel}, kurumda {item.physical}, {item.stateLabel}
+                              </p>
+                            ))
+                          : null}
                         {row.officialDetails.map((detail, index) => (
                           <p key={`${detail.dateLabel}-${index}`} className="mt-1">
                             {detail.dateLabel} {detail.label}
