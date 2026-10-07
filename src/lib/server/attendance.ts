@@ -200,7 +200,11 @@ type Prepared = {
 async function recognitionCounts(employeeId: string): Promise<{ entries: number; exits: number }> {
   const admin = createAdminClient();
   const [entries, exits] = await Promise.all([
-    admin.from("attendance_events").select("id", { count: "exact", head: true }).eq("employee_id", employeeId).eq("event_type", "ENTRY"),
+    admin
+      .from("attendance_events")
+      .select("id", { count: "exact", head: true })
+      .eq("employee_id", employeeId)
+      .in("event_type", ["ENTRY", "RETURN"]),
     admin
       .from("attendance_events")
       .select("id", { count: "exact", head: true })

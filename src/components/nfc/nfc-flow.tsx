@@ -4,6 +4,26 @@ import { useEffect, useRef, useState } from "react";
 import { ensureDeviceSession } from "@/lib/supabase/browser";
 import type { ExitReasonOption, NfcSuccessResponse } from "@/lib/attendance/types";
 
+const SAVED_CODE_KEY = "isyeri-personel-kodu";
+const CODE_LENGTH = 3;
+
+function readSavedCode(): string {
+  try {
+    const value = localStorage.getItem(SAVED_CODE_KEY)?.trim() ?? "";
+    return /^\d{3}$/.test(value) ? value : "";
+  } catch {
+    return "";
+  }
+}
+
+function rememberCode(value: string) {
+  try {
+    if (/^\d{3}$/.test(value)) localStorage.setItem(SAVED_CODE_KEY, value);
+  } catch {
+    // Telefon depolaması kapalıysa kod yalnızca bu oturumda kalır.
+  }
+}
+
 type Phase =
   | { kind: "loading"; text: string }
   | { kind: "error"; text: string }
@@ -35,7 +55,6 @@ export function NfcFlow({ publicId }: { publicId: string }) {
   const [lateReason, setLateReason] = useState("");
   const [lateError, setLateError] = useState<string | null>(null);
   const employeeCode = useRef("");
-  const timer = useRef<number | null>(null);
   const busy = useRef(false);
 
   async function tap(path: string, extra?: Record<string, unknown>) {
@@ -56,6 +75,7 @@ export function NfcFlow({ publicId }: { publicId: string }) {
       setPhase({ kind: "error", text: result.payload.error ?? "İşlem kaydedilemedi." });
       return;
     }
+    if (/^\d{3}$/.test(employeeCode.current)) rememberCode(employeeCode.current);
     const payload = result.payload;
     if (payload.action === "RECORDED") setPhase({ kind: "recorded", message: payload.message, time: payload.eventTime });
     else if (payload.action === "ALREADY_INSIDE") setPhase({ kind: "inside" });
@@ -80,7 +100,16 @@ export function NfcFlow({ publicId }: { publicId: string }) {
 
   async function start() {
     try {
-      apply(await tap("/api/attendance/nfc"));
+      employeeCode.current = "";
+      const result = await tap("/api/attendance/nfc");
+      if (result.ok && result.payload.action === "PAIR_REQUIRED") {
+        const saved = readSavedCode();
+        if (saved) {
+          await submitCode(saved);
+          return;
+        }
+      }
+      apply(result);
     } catch (error) {
       setPhase({ kind: "error", text: error instanceof Error ? error.message : "İşlem tamamlanamadı." });
     }
@@ -88,10 +117,7 @@ export function NfcFlow({ publicId }: { publicId: string }) {
 
   useEffect(() => {
     const kickoff = window.setTimeout(() => void start(), 0);
-    return () => {
-      window.clearTimeout(kickoff);
-      if (timer.current) window.clearTimeout(timer.current);
-    };
+    return () => window.clearTimeout(kickoff);
     // NFC sayfası açıldığında bir kez çalışır.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publicId]);
@@ -140,15 +166,23 @@ export function NfcFlow({ publicId }: { publicId: string }) {
 
   async function submitCode(raw: string) {
     const next = raw.trim();
-    if (next.length < 2 || busy.current) return;
-    if (timer.current) window.clearTimeout(timer.current);
+    if (!/^\d{3}$/.test(next) || busy.current) return;
     busy.current = true;
     setSaving(true);
     setPairError(null);
     setPhase({ kind: "loading", text: "Kaydediliyor" });
     employeeCode.current = next;
     try {
-      apply(await tap("/api/attendance/nfc"));
+      const result = await tap("/api/attendance/nfc");
+      if (!result.ok) {
+        employeeCode.current = "";
+        if (readSavedCode() === next) localStorage.removeItem(SAVED_CODE_KEY);
+        setCode("");
+        setPairError(result.payload.error ?? "Personel kodu bulunamadı.");
+        setPhase({ kind: "pair" });
+        return;
+      }
+      apply(result);
     } catch (error) {
       setPhase({ kind: "error", text: error instanceof Error ? error.message : "Eşleştirme başarısız." });
     } finally {
@@ -157,14 +191,10 @@ export function NfcFlow({ publicId }: { publicId: string }) {
     }
   }
 
-  function scheduleCode(value: string) {
-    setCode(value);
-    if (timer.current) window.clearTimeout(timer.current);
-    const next = value.trim();
-    if (next.length < 2) return;
-    timer.current = window.setTimeout(() => {
-      void submitCode(next);
-    }, 300);
+  function onCodeChange(value: string) {
+    const digits = value.replace(/\D/g, "").slice(0, CODE_LENGTH);
+    setCode(digits);
+    if (digits.length === CODE_LENGTH) void submitCode(digits);
   }
 
   return (
@@ -217,16 +247,17 @@ export function NfcFlow({ publicId }: { publicId: string }) {
           }}
         >
           <h1 className="text-3xl font-semibold">Personel kodu</h1>
-          <p className="text-slate-600">Kodu yazın. Yazmayı bitirince kayıt hemen alınır. Üç giriş ve üç çıkıştan sonra bu telefon kod sormadan tanınır.</p>
+          <p className="text-slate-600">3 haneli kodunuzu yazın. Üçüncü hane girilince kayıt alınır. Üç geliş ve üç çıkıştan sonra bu telefon kod sormadan tanınır.</p>
           <label className="grid gap-1 text-sm font-medium">
             Personel kodu
             <input
               value={code}
               autoFocus
-              autoCapitalize="characters"
+              inputMode="numeric"
               autoComplete="off"
-              onChange={(event) => scheduleCode(event.target.value)}
-              className="min-h-14 rounded-2xl border border-slate-200 px-4 text-lg"
+              maxLength={CODE_LENGTH}
+              onChange={(event) => onCodeChange(event.target.value)}
+              className="min-h-14 rounded-2xl border border-slate-200 px-4 text-lg tracking-[0.3em]"
             />
           </label>
           {pairError ? <p className="text-rose-700">{pairError}</p> : null}

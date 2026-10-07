@@ -115,7 +115,7 @@ describe("senaryo 4 6 7 8", () => {
 });
 
 describe("cihaz tanıma", () => {
-  it("üç giriş ve üç çıkıştan sonra kod sorulmaz", () => {
+  it("üç geliş ve üç çıkıştan sonra kod sorulmaz", () => {
     expect(isDeviceRecognized(2, 3)).toBe(false);
     expect(isDeviceRecognized(3, 2)).toBe(false);
     expect(isDeviceRecognized(3, 3)).toBe(true);
