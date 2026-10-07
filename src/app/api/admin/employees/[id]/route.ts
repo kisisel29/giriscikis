@@ -15,14 +15,15 @@ export async function GET(_request: Request, context: Context) {
     const { id } = await context.params;
     const employee = (await listEmployees()).find((item) => item.id === id);
     if (!employee) return NextResponse.json({ error: "Personel bulunamadı." }, { status: 404 });
+    const history = await employeeHistory(id);
     return NextResponse.json({
       employee,
       devices: await listDevices(id),
-      history: (await employeeHistory(id)).map((event) => ({
+      history: history.map((event) => ({
         id: event.id,
         eventType: event.eventType,
         when: formatDateTime(event.eventTime),
-        ...describeMovement(event),
+        ...describeMovement(event, undefined, history),
         customExitReason: event.customExitReason,
         exitCategory: event.exitCategory,
       })),

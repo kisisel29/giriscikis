@@ -1,6 +1,34 @@
-import type { AttendanceState, ExitCategory, ExitReasonOption, LocationFix, NfcAssessment, TagMode } from "@/lib/attendance/types";
-import { isEntryMode, isExitMode } from "@/lib/attendance/state";
+import type { AttendanceState, DomainEvent, ExitCategory, ExitReasonOption, LocationFix, NfcAssessment, TagMode } from "@/lib/attendance/types";
+import { APP_TIMEZONE } from "@/lib/attendance/types";
+import { eventsOnDay, isEntryMode, isExitMode } from "@/lib/attendance/state";
+import { clockToMinutes, dayKey, formatTime } from "@/lib/time";
 import { parseCustomExitReason } from "@/lib/text";
+
+export function isFirstArrival(input: {
+  eventType: "ENTRY" | "RETURN";
+  state: AttendanceState;
+  events: DomainEvent[];
+  now: Date;
+  timeZone?: string;
+}): boolean {
+  const timeZone = input.timeZone ?? APP_TIMEZONE;
+  const today = eventsOnDay(input.events, dayKey(input.now, timeZone), timeZone);
+  if (today.some((event) => event.eventType === "ENTRY" || event.eventType === "RETURN")) return false;
+  if (input.eventType === "ENTRY") return input.state === "NOT_ARRIVED";
+  return input.state.startsWith("OUT_");
+}
+
+export function shouldAskLateReason(input: {
+  eventType: "ENTRY" | "RETURN";
+  state: AttendanceState;
+  events: DomainEvent[];
+  now: Date;
+  timeZone?: string;
+}): boolean {
+  const timeZone = input.timeZone ?? APP_TIMEZONE;
+  if (clockToMinutes(formatTime(input.now, timeZone)) < 9 * 60) return false;
+  return isFirstArrival(input);
+}
 
 export function assessNfc(input: {
   tag: { active: boolean; mode: TagMode } | null;

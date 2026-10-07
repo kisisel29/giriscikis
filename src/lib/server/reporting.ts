@@ -101,7 +101,11 @@ export async function getOverview() {
     .reverse()
     .slice(0, 12)
     .map((event) => ({
-      ...describeMovement(event, timeZone),
+      ...describeMovement(
+        event,
+        timeZone,
+        events.filter((item) => item.employeeId === event.employeeId),
+      ),
       employeeName: (event as NamedEvent).employeeName,
       stateTitle: null,
     }));
@@ -173,7 +177,11 @@ export async function getEvents(params: URLSearchParams) {
     eventType: event.eventType,
     eventTime: event.eventTime,
     date: formatDate(event.eventTime, timeZone),
-    ...describeMovement(event, timeZone),
+    ...describeMovement(
+      event,
+      timeZone,
+      events.filter((item) => item.employeeId === event.employeeId),
+    ),
     category: event.exitCategory,
   }));
 }

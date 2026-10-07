@@ -1,5 +1,6 @@
 import type { AnomalyCode, AttendanceState, DomainEvent, EventType } from "@/lib/attendance/types";
-import { formatTime } from "@/lib/time";
+import { clockToMinutes, dayKey, formatTime } from "@/lib/time";
+import { APP_TIMEZONE } from "@/lib/attendance/types";
 
 export const STATE_LABELS: Record<AttendanceState, { title: string; banner: string; dot: string; chip: string }> = {
   NOT_ARRIVED: {
@@ -70,7 +71,26 @@ export const EVENT_LABELS: Record<EventType, string> = {
   END_OF_DAY: "Mesai sonu",
 };
 
-export function movementTitle(event: Pick<DomainEvent, "eventType" | "exitReasonName" | "customExitReason">): string {
+export function isMorningShiftStart(event: DomainEvent, peers: DomainEvent[], timeZone = APP_TIMEZONE): boolean {
+  if (event.eventType !== "ENTRY" && event.eventType !== "RETURN") return false;
+  if (clockToMinutes(formatTime(event.eventTime, timeZone)) < 7 * 60) return false;
+  const key = dayKey(new Date(event.eventTime), timeZone);
+  const first = peers
+    .filter(
+      (item) =>
+        item.employeeId === event.employeeId &&
+        dayKey(new Date(item.eventTime), timeZone) === key &&
+        (item.eventType === "ENTRY" || item.eventType === "RETURN"),
+    )
+    .sort((a, b) => a.eventTime.localeCompare(b.eventTime))[0];
+  return first?.id === event.id;
+}
+
+export function movementTitle(
+  event: Pick<DomainEvent, "eventType" | "exitReasonName" | "customExitReason">,
+  shiftStart = false,
+): string {
+  if (shiftStart && (event.eventType === "ENTRY" || event.eventType === "RETURN")) return "Mesaiye başladı";
   if (event.eventType === "ENTRY") return "Giriş";
   if (event.eventType === "RETURN") return "Dönüş";
   if (event.eventType === "END_OF_DAY") return event.customExitReason ? "Mesai sonu" : "Mesai sonu";
@@ -85,8 +105,12 @@ export function movementDetail(event: Pick<DomainEvent, "eventType" | "exitReaso
   return event.customExitReason;
 }
 
-export function describeMovement(event: DomainEvent, timeZone?: string): { time: string; title: string; detail: string | null } {
-  const title = movementTitle(event);
+export function describeMovement(
+  event: DomainEvent,
+  timeZone?: string,
+  peers: DomainEvent[] = [],
+): { time: string; title: string; detail: string | null } {
+  const title = movementTitle(event, isMorningShiftStart(event, peers, timeZone));
   const detail =
     event.customExitReason && title !== event.customExitReason ? event.customExitReason : movementDetail(event);
   return {

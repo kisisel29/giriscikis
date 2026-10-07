@@ -1,6 +1,6 @@
 import "server-only";
 import { ApiError } from "@/lib/api-error";
-import { assessExit, assessNfc, assessReentry, orderExitReasons, recordedMessage, resolveExitRecord } from "@/lib/attendance/assess";
+import { assessExit, assessNfc, assessReentry, isFirstArrival, orderExitReasons, recordedMessage, resolveExitRecord, shouldAskLateReason } from "@/lib/attendance/assess";
 import { deriveCurrentPresence, eventsOnDay } from "@/lib/attendance/state";
 import { calculateDay } from "@/lib/attendance/calculations";
 import { measureLocation } from "@/lib/attendance/location";
@@ -8,7 +8,8 @@ import { isDeviceRecognized } from "@/lib/attendance/trust";
 import { linkDevice } from "@/lib/server/pairing";
 import { describeMovement, greeting, STATE_LABELS } from "@/lib/attendance/labels";
 import type { DomainEvent, ExitReasonOption, LocationFix, NfcAssessment, NfcSuccessResponse } from "@/lib/attendance/types";
-import { dayKey, formatDuration, formatTime, previousDayKey, safeTimeZone, shouldSuggestEndOfDay, startOfDay } from "@/lib/time";
+import { sanitizePlainText } from "@/lib/text";
+import { clockToMinutes, dayKey, formatDuration, formatTime, previousDayKey, safeTimeZone, shouldSuggestEndOfDay, startOfDay } from "@/lib/time";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { exitBodySchema, nfcBodySchema, parseBody } from "@/lib/validation";
 import { mapEmployee, mapEvent, mapReason, mapSettings, mapTag, unwrap, type Employee, type NfcTag, type Settings } from "@/lib/server/rows";
@@ -313,6 +314,18 @@ export async function handleNfcTap(body: unknown): Promise<NfcSuccessResponse> {
   const prepared = await prepare(user.id, input);
   const assessment = assessNfc(context(prepared));
   if (assessment.action === "CREATE" && prepared.employee && prepared.tag) {
+    const arrival = {
+      eventType: assessment.eventType,
+      state: prepared.state.state,
+      events: prepared.events,
+      now: prepared.now,
+      timeZone: prepared.timeZone,
+    };
+    if (shouldAskLateReason(arrival) && !input.lateAnswer) {
+      return { action: "ASK_LATE_REASON", message: "Mesaiye geç kalındı. Sebep belirtmek ister misiniz?" };
+    }
+    const lateReason =
+      input.lateAnswer === "yes" ? sanitizePlainText(input.lateReason, { min: 2, max: 250, label: "Geç kalma sebebi" }) : null;
     const saved = await insertEvent({
       employeeId: prepared.employee.id,
       eventType: assessment.eventType,
@@ -321,12 +334,15 @@ export async function handleNfcTap(body: unknown): Promise<NfcSuccessResponse> {
       location: prepared.location,
       latitude: input.latitude,
       longitude: input.longitude,
+      customExitReason: lateReason,
     });
+    const morningStart =
+      isFirstArrival(arrival) && clockToMinutes(formatTime(saved.eventTime, prepared.timeZone)) >= 7 * 60;
     return {
       action: "RECORDED",
       eventType: saved.eventType,
       eventTime: formatTime(saved.eventTime, prepared.timeZone),
-      message: recordedMessage(saved.eventType),
+      message: morningStart ? "Mesaiye başladınız" : recordedMessage(saved.eventType),
     };
   }
   return respond(prepared, assessment);
@@ -423,7 +439,7 @@ export async function getMyStatus() {
     duty: formatDuration(metrics.dutyMs, true),
     overtime: metrics.overtimeMs > 0 ? formatDuration(metrics.overtimeMs, true) : null,
     movements: [
-      ...today.map((event) => describeMovement(event, timeZone)),
+      ...today.map((event) => describeMovement(event, timeZone, today)),
       ...(presence.assumedExit
         ? [
             {

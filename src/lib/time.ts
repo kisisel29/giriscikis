@@ -82,6 +82,10 @@ export function clockToMinutes(time: string): number {
   return hour * 60 + minute;
 }
 
+export function warningsClosed(day: string, now: Date, timeZone = APP_TIMEZONE): boolean {
+  return now.getTime() >= zonedDateTime(day, "23:00", timeZone).getTime();
+}
+
 export function forgottenExitTime(input: {
   day: string;
   workEnd: string;

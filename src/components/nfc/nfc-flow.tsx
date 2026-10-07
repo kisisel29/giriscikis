@@ -12,6 +12,7 @@ type Phase =
   | { kind: "outside"; lastExit: { time: string; label: string; detail: string | null } | null }
   | { kind: "reentry" }
   | { kind: "pair" }
+  | { kind: "late" }
   | { kind: "exit"; employeeName: string; suggestEndOfDay: boolean; reasons: ExitReasonOption[] };
 
 async function postJson(url: string, body: unknown): Promise<{ ok: boolean; payload: NfcSuccessResponse & { error?: string } }> {
@@ -32,6 +33,9 @@ export function NfcFlow({ publicId }: { publicId: string }) {
   const [pending, setPending] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [pairError, setPairError] = useState<string | null>(null);
+  const [lateChoice, setLateChoice] = useState<"yes" | "no" | null>(null);
+  const [lateReason, setLateReason] = useState("");
+  const [lateError, setLateError] = useState<string | null>(null);
   const employeeCode = useRef("");
   const timer = useRef<number | null>(null);
 
@@ -60,7 +64,12 @@ export function NfcFlow({ publicId }: { publicId: string }) {
     else if (payload.action === "CONFIRM_REENTRY") setPhase({ kind: "reentry" });
     else if (payload.action === "PAIR_REQUIRED") setPhase({ kind: "pair" });
     else if (payload.action === "DUPLICATE") setPhase({ kind: "error", text: payload.message });
-    else if (payload.action === "SELECT_EXIT_REASON") {
+    else if (payload.action === "ASK_LATE_REASON") {
+      setLateChoice(null);
+      setLateReason("");
+      setLateError(null);
+      setPhase({ kind: "late" });
+    } else if (payload.action === "SELECT_EXIT_REASON") {
       setPhase({
         kind: "exit",
         employeeName: payload.employeeName,
@@ -112,6 +121,27 @@ export function NfcFlow({ publicId }: { publicId: string }) {
     timer.current = window.setTimeout(() => {
       void saveExit(reason, note);
     }, 1000);
+  }
+
+  async function saveLate() {
+    if (!lateChoice) return;
+    setSaving(true);
+    setLateError(null);
+    try {
+      const result = await tap("/api/attendance/nfc", {
+        lateAnswer: lateChoice,
+        lateReason: lateChoice === "yes" ? lateReason : null,
+      });
+      if (!result.ok) {
+        setLateError(result.payload.error ?? "Kayıt tamamlanamadı.");
+        return;
+      }
+      apply(result);
+    } catch (error) {
+      setLateError(error instanceof Error ? error.message : "Kayıt tamamlanamadı.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function pair(formData: FormData) {
@@ -187,6 +217,49 @@ export function NfcFlow({ publicId }: { publicId: string }) {
             Eşleştir
           </button>
         </form>
+      ) : null}
+      {phase.kind === "late" ? (
+        <div className="flex flex-1 flex-col justify-center gap-4">
+          <h1 className="text-3xl font-semibold">Mesaiye geç kalındı. Sebep belirtmek ister misiniz?</h1>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setLateChoice("yes")}
+              className={`min-h-14 rounded-2xl font-semibold ${lateChoice === "yes" ? "bg-teal-800 text-white" : "bg-white ring-1 ring-slate-200"}`}
+            >
+              Evet
+            </button>
+            <button
+              type="button"
+              onClick={() => setLateChoice("no")}
+              className={`min-h-14 rounded-2xl font-semibold ${lateChoice === "no" ? "bg-slate-900 text-white" : "bg-white ring-1 ring-slate-200"}`}
+            >
+              Hayır
+            </button>
+          </div>
+          {lateChoice === "yes" ? (
+            <label className="grid gap-2 text-sm font-medium">
+              Geç kalma sebebi
+              <textarea
+                value={lateReason}
+                onChange={(event) => setLateReason(event.target.value)}
+                rows={4}
+                placeholder="Sebebinizi yazabilirsiniz"
+                className="rounded-2xl border border-slate-200 px-4 py-3 text-base"
+              />
+              <span className="font-normal text-slate-500">Yazmak için acele etmeyin. Bitince Kaydet’e basın.</span>
+            </label>
+          ) : null}
+          {lateError ? <p className="text-rose-700">{lateError}</p> : null}
+          <button
+            type="button"
+            disabled={saving || !lateChoice}
+            onClick={() => void saveLate()}
+            className="min-h-14 rounded-2xl bg-teal-800 font-semibold text-white disabled:opacity-40"
+          >
+            Kaydet
+          </button>
+        </div>
       ) : null}
       {phase.kind === "exit" ? (
         <div className="flex flex-col gap-3 pb-28">

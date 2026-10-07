@@ -82,6 +82,7 @@ export type NfcAssessment =
   | { action: "ALREADY_OUTSIDE" }
   | { action: "CONFIRM_REENTRY" }
   | { action: "SELECT_EXIT_REASON" }
+  | { action: "ASK_LATE_REASON" }
   | { action: "CREATE"; eventType: "ENTRY" | "RETURN" };
 
 export type RecordedResponse = {
@@ -109,4 +110,5 @@ export type NfcSuccessResponse =
   | { action: "ALREADY_OUTSIDE"; message: string; lastExit: LastExitInfo | null }
   | { action: "CONFIRM_REENTRY"; message: string }
   | { action: "DUPLICATE"; message: string; eventTime: string | null }
-  | { action: "PAIR_REQUIRED"; message: string };
+  | { action: "PAIR_REQUIRED"; message: string }
+  | { action: "ASK_LATE_REASON"; message: string };

@@ -50,7 +50,7 @@ export function buildPresence(input: {
       const presence = deriveCurrentPresence(own, input.now, timeZone, employee.workEnd ?? "16:45");
       counts[presence.state] += 1;
       const latest = [...own].sort((a, b) => b.eventTime.localeCompare(a.eventTime))[0];
-      const described = latest ? describeMovement(latest, timeZone) : null;
+      const described = latest ? describeMovement(latest, timeZone, own) : null;
       const assumed = presence.assumedExit
         ? {
             time: formatTime(presence.assumedExit, timeZone),

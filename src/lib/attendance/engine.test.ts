@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { assessExit, assessNfc, assessReentry, orderExitReasons, resolveExitRecord } from "@/lib/attendance/assess";
+import { assessExit, assessNfc, assessReentry, orderExitReasons, resolveExitRecord, shouldAskLateReason } from "@/lib/attendance/assess";
 import { buildAuditEntry } from "@/lib/attendance/audit";
 import { calculateDay } from "@/lib/attendance/calculations";
 import { measureLocation } from "@/lib/attendance/location";
 import { buildPresence } from "@/lib/attendance/presence";
 import { buildReports } from "@/lib/attendance/reports";
 import { findDayAnomalies } from "@/lib/attendance/review";
+import { describeMovement } from "@/lib/attendance/labels";
 import { deriveCurrentPresence, deriveState } from "@/lib/attendance/state";
 import { isDeviceRecognized } from "@/lib/attendance/trust";
 import type { DomainEvent, ExitReasonOption, LocationFix } from "@/lib/attendance/types";
@@ -396,14 +397,50 @@ describe("dün içeride kalan", () => {
     });
   });
 
-  it("resmî görevle dışarıda kalanı ertesi güne taşır", () => {
-    const presence = deriveCurrentPresence(
-      [
-        event({ eventType: "ENTRY", eventTime: "2026-10-05T08:00:00+03:00" }),
-        event({ eventType: "EXIT", eventTime: "2026-10-05T15:00:00+03:00", exitCategory: "OFFICIAL" }),
-      ],
-      new Date("2026-10-06T09:00:00+03:00"),
-    );
-    expect(presence).toEqual({ state: "OUT_OFFICIAL", carried: true, assumedExit: null });
+  it("23:00 sonrası dışarıda kalan uyarısını ertesi güne taşımaz", () => {
+    const events = [
+      event({ eventType: "ENTRY", eventTime: "2026-10-05T08:30:00+03:00" }),
+      event({ eventType: "EXIT", eventTime: "2026-10-05T13:54:00+03:00", exitCategory: "OTHER", exitReasonName: "Diğer" }),
+    ];
+    expect(deriveCurrentPresence(events, new Date("2026-10-05T22:00:00+03:00")).state).toBe("OUT_OTHER");
+    expect(deriveCurrentPresence(events, new Date("2026-10-05T23:00:00+03:00"))).toEqual({
+      state: "NOT_ARRIVED",
+      carried: false,
+      assumedExit: null,
+    });
+    expect(deriveCurrentPresence(events, new Date("2026-10-06T08:24:00+03:00"))).toEqual({
+      state: "NOT_ARRIVED",
+      carried: false,
+      assumedExit: null,
+    });
+  });
+});
+
+describe("sabah mesai başlangıcı", () => {
+  it("07:00 ve sonrasındaki ilk gelişe mesaiye başladı yazar", () => {
+    const arrival = event({ id: "in", eventType: "RETURN", eventTime: "2026-10-07T08:10:00+03:00" });
+    expect(describeMovement(arrival, "Europe/Istanbul", [arrival]).title).toBe("Mesaiye başladı");
+    const later = event({ id: "back", eventType: "RETURN", eventTime: "2026-10-07T14:00:00+03:00" });
+    const day = [event({ id: "in", eventType: "ENTRY", eventTime: "2026-10-07T08:10:00+03:00" }), later];
+    expect(describeMovement(later, "Europe/Istanbul", day).title).toBe("Dönüş");
+  });
+
+  it("09:00 ve sonrasındaki ilk gelişte geç kalma sebebi sorar", () => {
+    const base = {
+      eventType: "ENTRY" as const,
+      state: "NOT_ARRIVED" as const,
+      events: [],
+      timeZone: "Europe/Istanbul",
+    };
+    expect(shouldAskLateReason({ ...base, now: new Date("2026-10-07T08:59:00+03:00") })).toBe(false);
+    expect(shouldAskLateReason({ ...base, now: new Date("2026-10-07T09:00:00+03:00") })).toBe(true);
+    expect(
+      shouldAskLateReason({
+        eventType: "RETURN",
+        state: "OUT_PERSONAL",
+        events: [event({ eventType: "ENTRY", eventTime: "2026-10-07T08:30:00+03:00" })],
+        now: new Date("2026-10-07T10:00:00+03:00"),
+      }),
+    ).toBe(false);
   });
 });

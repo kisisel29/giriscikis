@@ -1,5 +1,5 @@
 import type { AttendanceState, DomainEvent, ExitCategory, TagMode } from "@/lib/attendance/types";
-import { dayKey, forgottenExitTime, previousDayKey } from "@/lib/time";
+import { dayKey, forgottenExitTime, previousDayKey, warningsClosed } from "@/lib/time";
 import { APP_TIMEZONE } from "@/lib/attendance/types";
 
 export function outsideState(category: ExitCategory): AttendanceState {
@@ -64,6 +64,9 @@ export function deriveCurrentPresence(
       stillInside: state === "INSIDE",
     });
     if (assumed) return { state: "FINISHED", carried: false, assumedExit: assumed.toISOString() };
+    if (state.startsWith("OUT_") && warningsClosed(todayKey, now, timeZone)) {
+      return { state: "NOT_ARRIVED", carried: false, assumedExit: null };
+    }
     return { state, carried: false, assumedExit: null };
   }
   const yesterdayKey = previousDayKey(now, timeZone);
@@ -76,6 +79,9 @@ export function deriveCurrentPresence(
     stillInside: yesterdayState === "INSIDE",
   });
   if (assumedYesterday) return { state: "NOT_ARRIVED", carried: false, assumedExit: null };
+  if (yesterdayState.startsWith("OUT_") && warningsClosed(yesterdayKey, now, timeZone)) {
+    return { state: "NOT_ARRIVED", carried: false, assumedExit: null };
+  }
   if (isOpenState(yesterdayState)) {
     return { state: yesterdayState, carried: true, assumedExit: null };
   }
