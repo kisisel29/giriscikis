@@ -26,18 +26,17 @@ async function postJson(url: string, body: unknown): Promise<{ ok: boolean; payl
 }
 
 export function NfcFlow({ publicId }: { publicId: string }) {
-  const [phase, setPhase] = useState<Phase>({ kind: "loading", text: "İşlem kontrol ediliyor" });
+  const [phase, setPhase] = useState<Phase>({ kind: "loading", text: "Kaydediliyor" });
   const [custom, setCustom] = useState("");
-  const [note, setNote] = useState("");
-  const [selected, setSelected] = useState<ExitReasonOption | null>(null);
-  const [pending, setPending] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [pairError, setPairError] = useState<string | null>(null);
+  const [code, setCode] = useState("");
   const [lateChoice, setLateChoice] = useState<"yes" | "no" | null>(null);
   const [lateReason, setLateReason] = useState("");
   const [lateError, setLateError] = useState<string | null>(null);
   const employeeCode = useRef("");
   const timer = useRef<number | null>(null);
+  const busy = useRef(false);
 
   async function tap(path: string, extra?: Record<string, unknown>) {
     await ensureDeviceSession();
@@ -99,7 +98,7 @@ export function NfcFlow({ publicId }: { publicId: string }) {
 
   async function saveExit(reason: ExitReasonOption | null, customText: string) {
     setSaving(true);
-    setPending(null);
+    setPhase({ kind: "loading", text: "Kaydediliyor" });
     try {
       apply(
         await tap("/api/attendance/exit", {
@@ -115,12 +114,7 @@ export function NfcFlow({ publicId }: { publicId: string }) {
   }
 
   function chooseReason(reason: ExitReasonOption) {
-    if (timer.current) window.clearTimeout(timer.current);
-    setSelected(reason);
-    setPending(reason.name);
-    timer.current = window.setTimeout(() => {
-      void saveExit(reason, note);
-    }, 1000);
+    void saveExit(reason, "");
   }
 
   async function saveLate() {
@@ -144,17 +138,33 @@ export function NfcFlow({ publicId }: { publicId: string }) {
     }
   }
 
-  async function pair(formData: FormData) {
+  async function submitCode(raw: string) {
+    const next = raw.trim();
+    if (next.length < 2 || busy.current) return;
+    if (timer.current) window.clearTimeout(timer.current);
+    busy.current = true;
     setSaving(true);
     setPairError(null);
-    employeeCode.current = String(formData.get("employeeCode") ?? "").trim();
+    setPhase({ kind: "loading", text: "Kaydediliyor" });
+    employeeCode.current = next;
     try {
       apply(await tap("/api/attendance/nfc"));
     } catch (error) {
       setPhase({ kind: "error", text: error instanceof Error ? error.message : "Eşleştirme başarısız." });
     } finally {
+      busy.current = false;
       setSaving(false);
     }
+  }
+
+  function scheduleCode(value: string) {
+    setCode(value);
+    if (timer.current) window.clearTimeout(timer.current);
+    const next = value.trim();
+    if (next.length < 2) return;
+    timer.current = window.setTimeout(() => {
+      void submitCode(next);
+    }, 300);
   }
 
   return (
@@ -203,19 +213,23 @@ export function NfcFlow({ publicId }: { publicId: string }) {
           className="flex flex-1 flex-col justify-center gap-4"
           onSubmit={(event) => {
             event.preventDefault();
-            void pair(new FormData(event.currentTarget));
+            void submitCode(code);
           }}
         >
-          <h1 className="text-3xl font-semibold">Cihazı bağla</h1>
-          <p className="text-slate-600">Personel kodunuzu girin. Üç giriş ve üç çıkıştan sonra bu telefon kod sormadan tanınır.</p>
+          <h1 className="text-3xl font-semibold">Personel kodu</h1>
+          <p className="text-slate-600">Kodu yazın. Yazmayı bitirince kayıt hemen alınır. Üç giriş ve üç çıkıştan sonra bu telefon kod sormadan tanınır.</p>
           <label className="grid gap-1 text-sm font-medium">
             Personel kodu
-            <input name="employeeCode" required autoCapitalize="characters" className="min-h-14 rounded-2xl border border-slate-200 px-4 text-lg" />
+            <input
+              value={code}
+              autoFocus
+              autoCapitalize="characters"
+              autoComplete="off"
+              onChange={(event) => scheduleCode(event.target.value)}
+              className="min-h-14 rounded-2xl border border-slate-200 px-4 text-lg"
+            />
           </label>
           {pairError ? <p className="text-rose-700">{pairError}</p> : null}
-          <button disabled={saving} className="min-h-14 rounded-2xl bg-teal-800 font-semibold text-white disabled:opacity-60">
-            Eşleştir
-          </button>
         </form>
       ) : null}
       {phase.kind === "late" ? (
@@ -275,27 +289,12 @@ export function NfcFlow({ publicId }: { publicId: string }) {
                 onClick={() => chooseReason(reason)}
                 className={`min-h-14 rounded-2xl px-4 text-left text-lg font-semibold ${
                   featured ? "bg-teal-800 text-white" : "bg-white ring-1 ring-slate-200"
-                } ${selected?.id === reason.id ? "outline outline-2 outline-offset-2 outline-teal-700" : ""}`}
+                }`}
               >
                 {reason.name}
               </button>
             );
           })}
-          {selected?.allowNote ? (
-            <label className="mt-2 grid gap-1 text-sm font-medium">
-              Açıklama ekle
-              <input
-                value={note}
-                onChange={(event) => {
-                  setNote(event.target.value);
-                  if (timer.current) window.clearTimeout(timer.current);
-                  setPending(null);
-                }}
-                placeholder="Örneğin İl MEM toplantısı"
-                className="min-h-14 rounded-2xl border border-slate-200 px-4"
-              />
-            </label>
-          ) : null}
           <label className="mt-2 grid gap-1 text-sm font-medium">
             Farklı bir neden yaz
             <input
@@ -307,30 +306,12 @@ export function NfcFlow({ publicId }: { publicId: string }) {
           </label>
           <button
             type="button"
-            disabled={saving || (!selected && custom.trim().length < 2)}
-            onClick={() => {
-              if (timer.current) window.clearTimeout(timer.current);
-              void saveExit(selected, custom.trim() ? custom : note);
-            }}
+            disabled={saving || custom.trim().length < 2}
+            onClick={() => void saveExit(null, custom)}
             className="min-h-14 rounded-2xl bg-slate-900 font-semibold text-white disabled:opacity-40"
           >
             Çıkışı kaydet
           </button>
-          {pending ? (
-            <div className="fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-md items-center justify-between gap-3 bg-slate-900 px-4 py-4 text-white">
-              <span>{pending} olarak kaydediliyor</span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (timer.current) window.clearTimeout(timer.current);
-                  setPending(null);
-                }}
-                className="min-h-10 rounded-xl bg-white px-3 font-semibold text-slate-900"
-              >
-                Geri al
-              </button>
-            </div>
-          ) : null}
         </div>
       ) : null}
     </main>

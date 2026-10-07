@@ -47,5 +47,5 @@ export async function assertRateLimit(authUserId: string): Promise<void> {
   const inserted = await admin.from("attendance_attempts").insert({ auth_user_id: authUserId });
   if (inserted.error) console.error(inserted.error);
   const old = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  await admin.from("attendance_attempts").delete().eq("auth_user_id", authUserId).lt("created_at", old);
+  void admin.from("attendance_attempts").delete().eq("auth_user_id", authUserId).lt("created_at", old);
 }

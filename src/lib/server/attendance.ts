@@ -193,21 +193,20 @@ type Prepared = {
   duplicate: boolean;
   recognized: boolean;
   confirmed: boolean;
+  reasons: ExitReasonOption[];
   state: ReturnType<typeof deriveCurrentPresence>;
 };
 
 async function recognitionCounts(employeeId: string): Promise<{ entries: number; exits: number }> {
   const admin = createAdminClient();
-  const entries = await admin
-    .from("attendance_events")
-    .select("id", { count: "exact", head: true })
-    .eq("employee_id", employeeId)
-    .eq("event_type", "ENTRY");
-  const exits = await admin
-    .from("attendance_events")
-    .select("id", { count: "exact", head: true })
-    .eq("employee_id", employeeId)
-    .in("event_type", ["EXIT", "END_OF_DAY"]);
+  const [entries, exits] = await Promise.all([
+    admin.from("attendance_events").select("id", { count: "exact", head: true }).eq("employee_id", employeeId).eq("event_type", "ENTRY"),
+    admin
+      .from("attendance_events")
+      .select("id", { count: "exact", head: true })
+      .eq("employee_id", employeeId)
+      .in("event_type", ["EXIT", "END_OF_DAY"]),
+  ]);
   if (entries.error || exits.error) throw new ApiError("Veritabanı işlemi başarısız.", 500);
   return { entries: entries.count ?? 0, exits: exits.count ?? 0 };
 }
@@ -216,23 +215,28 @@ async function prepare(
   userId: string,
   input: { tagPublicId: string; latitude: number | null; longitude: number | null; accuracy: number | null; employeeCode?: string },
 ): Promise<Prepared> {
-  await assertRateLimit(userId);
-  const settings = await loadSettings();
-  const timeZone = safeTimeZone(settings.timezone);
   const now = new Date();
-  const tag = await loadTag(input.tagPublicId);
-  let device = await loadDevice(userId);
+  const [, settings, tag, existingDevice, reasons] = await Promise.all([
+    assertRateLimit(userId),
+    loadSettings(),
+    loadTag(input.tagPublicId),
+    loadDevice(userId),
+    loadActiveReasons(),
+  ]);
+  const timeZone = safeTimeZone(settings.timezone);
+  let device = existingDevice;
   if (input.employeeCode) {
-    const linked = await linkDevice(userId, input.employeeCode, "Telefon");
-    device = linked;
+    device = await linkDevice(userId, input.employeeCode, "Telefon");
   }
-  const employee = device ? await loadEmployee(device.employeeId) : null;
-  if (device) await touchDevice(device.id);
-  const events = employee ? await loadRecentEvents(employee.id, now, timeZone) : [];
-  const counts = employee ? await recognitionCounts(employee.id) : { entries: 0, exits: 0 };
+  if (device) void touchDevice(device.id);
+  const [employee, events, counts, duplicate] = await Promise.all([
+    device ? loadEmployee(device.employeeId) : Promise.resolve(null),
+    device ? loadRecentEvents(device.employeeId, now, timeZone) : Promise.resolve([]),
+    device ? recognitionCounts(device.employeeId) : Promise.resolve({ entries: 0, exits: 0 }),
+    device && tag ? isDuplicate(device.employeeId, tag.id, settings.duplicateWindowSeconds) : Promise.resolve(false),
+  ]);
   const recognized = isDeviceRecognized(counts.entries, counts.exits);
   const location = locationOf(settings, input);
-  const duplicate = employee && tag ? await isDuplicate(employee.id, tag.id, settings.duplicateWindowSeconds) : false;
   const state = deriveCurrentPresence(events, now, timeZone, employee?.workEnd ?? settings.defaultWorkEnd);
   return {
     settings,
@@ -246,6 +250,7 @@ async function prepare(
     duplicate,
     recognized,
     confirmed: Boolean(input.employeeCode),
+    reasons,
     state,
   };
 }
@@ -290,7 +295,7 @@ async function respond(prepared: Prepared, assessment: NfcAssessment): Promise<N
   }
   if (assessment.action === "SELECT_EXIT_REASON") {
     const reasons = orderExitReasons(
-      await loadActiveReasons(),
+      prepared.reasons,
       shouldSuggestEndOfDay(
         prepared.now,
         prepared.employee?.workEnd ?? prepared.settings.defaultWorkEnd,
@@ -355,8 +360,7 @@ export async function handleExit(body: unknown): Promise<NfcSuccessResponse> {
   const assessment = assessExit(context(prepared));
   if (assessment.action !== "SELECT_EXIT_REASON") return respond(prepared, assessment);
   if (!prepared.employee || !prepared.tag) throw new ApiError("Kayıt oluşturulamadı.", 500);
-  const reasons = await loadActiveReasons();
-  const preset = input.exitReasonId ? reasons.find((reason) => reason.id === input.exitReasonId) ?? null : null;
+  const preset = input.exitReasonId ? prepared.reasons.find((reason) => reason.id === input.exitReasonId) ?? null : null;
   if (input.exitReasonId && !preset) throw new ApiError("Seçilen çıkış nedeni bulunamadı.", 400);
   const resolved = resolveExitRecord({ preset, customRaw: input.customExitReason });
   const saved = await insertEvent({

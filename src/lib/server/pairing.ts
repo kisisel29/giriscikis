@@ -16,28 +16,27 @@ export async function linkDevice(authUserId: string, rawEmployeeCode: string, de
   const employee = asRow(employeeRow);
   if (employee.active !== true) throw new ApiError("Personel kodu bulunamadı.", 400);
   const employeeId = String(employee.id);
-  const otherDevice = unwrap(
-    await admin
+  const [otherDevice, activeDevices] = await Promise.all([
+    admin
       .from("employee_devices")
       .select("id")
       .eq("auth_user_id", authUserId)
       .eq("active", true)
       .neq("employee_id", employeeId)
       .limit(1),
-  );
-  if (Array.isArray(otherDevice) && otherDevice.length > 0) {
-    throw new ApiError("Bu cihaz başka bir personele bağlı.", 400);
-  }
-  const activeDevices = unwrap(
-    await admin
+    admin
       .from("employee_devices")
       .select("id")
       .eq("employee_id", employeeId)
       .eq("active", true)
       .neq("auth_user_id", authUserId)
       .order("last_seen_at", { ascending: true }),
-  );
-  const others = Array.isArray(activeDevices) ? activeDevices : [];
+  ]);
+  if (otherDevice.error || activeDevices.error) throw new ApiError("Cihaz bağlanamadı.", 500);
+  if ((otherDevice.data ?? []).length > 0) {
+    throw new ApiError("Bu cihaz başka bir personele bağlı.", 400);
+  }
+  const others = activeDevices.data ?? [];
   const maxDevices = typeof employee.max_devices === "number" ? employee.max_devices : 1;
   const overflow = others.length - maxDevices + 1;
   if (overflow > 0) {
