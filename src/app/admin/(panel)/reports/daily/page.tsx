@@ -1,5 +1,5 @@
-import { ReportView } from "@/components/admin/reports";
+import { redirect } from "next/navigation";
 
-export default function DailyReportPage() {
-  return <ReportView period="daily" />;
+export default function DailyReportRedirect() {
+  redirect("/admin/reports");
 }

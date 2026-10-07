@@ -98,7 +98,7 @@ type ReportShape = {
 };
 
 export function reportTables(data: ReportShape, title: string): ExportTable[] {
-  const daily = data.reports.length === 1 || data.from === data.to;
+  const daily = data.from === data.to;
   const summary: ExportTable = {
     title,
     subtitle: `${data.from} – ${data.to}`,

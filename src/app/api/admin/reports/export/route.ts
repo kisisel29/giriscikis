@@ -11,12 +11,10 @@ export async function GET(request: Request) {
     await requireAdmin();
     const params = new URL(request.url).searchParams;
     const format = params.get("format") === "pdf" ? "pdf" : "xlsx";
-    const period = params.get("period") ?? "daily";
-    const title = period === "monthly" ? "Aylık rapor" : period === "weekly" ? "Haftalık rapor" : "Günlük rapor";
     const data = await getReport(params);
-    const tables = reportTables(data, title);
+    const tables = reportTables(data, "Rapor");
     const buffer = format === "pdf" ? await renderPdf(tables) : await renderXlsx(tables);
-    const filename = `${period}-rapor.${format}`;
+    const filename = `rapor.${format}`;
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type":

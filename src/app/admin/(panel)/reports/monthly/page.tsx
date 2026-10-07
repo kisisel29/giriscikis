@@ -1,5 +1,5 @@
-import { ReportView } from "@/components/admin/reports";
+import { redirect } from "next/navigation";
 
-export default function MonthlyReportPage() {
-  return <ReportView period="monthly" />;
+export default function MonthlyReportRedirect() {
+  redirect("/admin/reports");
 }

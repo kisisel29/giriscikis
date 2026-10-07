@@ -137,7 +137,7 @@ Hareket kaydında `location_verified`, `distance_meters` ve `location_accuracy` 
 
 ## Yönetim
 
-`/admin` menüsü: Dashboard, Canlı Durum, Kurumda Kimler Var, Personel, Hareketler, Günlük / Haftalık / Aylık Rapor, NFC Etiketleri, Çıkış Nedenleri, Kontrol Gereken Kayıtlar, Audit Log, Ayarlar.
+`/admin` menüsü: Dashboard, Canlı Durum, Kurumda Kimler Var, Personel, Hareketler, Rapor, NFC Etiketleri, Çıkış Nedenleri, Kontrol Gereken Kayıtlar, Audit Log, Ayarlar.
 
 Canlı durum Supabase Realtime ile yeni hareket geldiğinde yenilenir. Yedek olarak 20 saniyede bir de sorulur.
 
