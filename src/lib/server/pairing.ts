@@ -65,7 +65,7 @@ export async function linkDevice(authUserId: string, rawEmployeeCode: string, de
   if (saved.error || !saved.data || typeof saved.data !== "object" || typeof (saved.data as { id?: unknown }).id !== "string") {
     throw new ApiError("Cihaz bağlanamadı.", 500);
   }
-  return { id: (saved.data as { id: string }).id, employeeId };
+  return { id: (saved.data as { id: string }).id, employeeId, active: true };
 }
 
 export async function handlePairing(body: unknown, userAgent: string | null) {

@@ -285,7 +285,7 @@ export function NfcFlow({ publicId }: { publicId: string }) {
           }}
         >
           <h1 className="text-3xl font-semibold">Personel kodu</h1>
-          <p className="text-slate-600">3 haneli kodunuzu yazın. Üçüncü hane girilince kayıt alınır. Bu telefonda aynı kodla üçten fazla kayıt olunca kod bir daha sorulmaz.</p>
+          <p className="text-slate-600">3 haneli kodunuzu yazın. Üçüncü hane girilince kayıt alınır. Bu telefonda üçten fazla giriş veya çıkış varsa kod bir daha sorulmaz.</p>
           <label className="grid gap-1 text-sm font-medium">
             Personel kodu
             <input

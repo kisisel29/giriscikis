@@ -33,19 +33,29 @@ async function loadTag(publicId: string): Promise<NfcTag | null> {
   return data ? mapTag(data) : null;
 }
 
-async function loadDevice(authUserId: string): Promise<{ id: string; employeeId: string } | null> {
+async function loadDevice(authUserId: string, includeInactive = false): Promise<{ id: string; employeeId: string; active: boolean } | null> {
   const admin = createAdminClient();
-  const result = await admin
+  let query = admin
     .from("employee_devices")
-    .select("id, employee_id")
+    .select("id, employee_id, active")
     .eq("auth_user_id", authUserId)
-    .eq("active", true)
-    .maybeSingle();
-  const data = unwrap(result);
-  if (!data || typeof data !== "object") return null;
-  const record = data as { id?: unknown; employee_id?: unknown };
+    .order("active", { ascending: false })
+    .order("last_seen_at", { ascending: false, nullsFirst: false })
+    .limit(1);
+  if (!includeInactive) query = query.eq("active", true);
+  const result = await query;
+  const row = (unwrap(result) ?? [])[0];
+  if (!row || typeof row !== "object") return null;
+  const record = row as { id?: unknown; employee_id?: unknown; active?: unknown };
   if (typeof record.id !== "string" || typeof record.employee_id !== "string") return null;
-  return { id: record.id, employeeId: record.employee_id };
+  return { id: record.id, employeeId: record.employee_id, active: record.active === true };
+}
+
+async function restoreRecognizedDevice(deviceId: string, authUserId: string) {
+  const admin = createAdminClient();
+  const cleared = await admin.from("employee_devices").update({ active: false }).eq("auth_user_id", authUserId).eq("active", true).neq("id", deviceId);
+  if (cleared.error) return;
+  await admin.from("employee_devices").update({ active: true, last_seen_at: new Date().toISOString() }).eq("id", deviceId);
 }
 
 async function loadEmployee(id: string): Promise<Employee> {
@@ -186,7 +196,7 @@ type Prepared = {
   timeZone: string;
   now: Date;
   tag: NfcTag | null;
-  device: { id: string; employeeId: string } | null;
+  device: { id: string; employeeId: string; active: boolean } | null;
   employee: Employee | null;
   events: DomainEvent[];
   location: LocationFix;
@@ -198,11 +208,18 @@ type Prepared = {
   state: ReturnType<typeof deriveCurrentPresence>;
 };
 
-async function recognitionCount(employeeId: string): Promise<number> {
+async function recognitionCounts(employeeId: string): Promise<{ entries: number; exits: number }> {
   const admin = createAdminClient();
-  const result = await admin.from("attendance_events").select("id", { count: "exact", head: true }).eq("employee_id", employeeId);
-  if (result.error) throw new ApiError("Veritabanı işlemi başarısız.", 500);
-  return result.count ?? 0;
+  const [entries, exits] = await Promise.all([
+    admin.from("attendance_events").select("id", { count: "exact", head: true }).eq("employee_id", employeeId).in("event_type", ["ENTRY", "RETURN"]),
+    admin
+      .from("attendance_events")
+      .select("id", { count: "exact", head: true })
+      .eq("employee_id", employeeId)
+      .in("event_type", ["EXIT", "END_OF_DAY"]),
+  ]);
+  if (entries.error || exits.error) throw new ApiError("Veritabanı işlemi başarısız.", 500);
+  return { entries: entries.count ?? 0, exits: exits.count ?? 0 };
 }
 
 async function prepare(
@@ -214,7 +231,7 @@ async function prepare(
     assertRateLimit(userId),
     loadSettings(),
     loadTag(input.tagPublicId),
-    loadDevice(userId),
+    loadDevice(userId, true),
     loadActiveReasons(),
   ]);
   const timeZone = safeTimeZone(settings.timezone);
@@ -222,14 +239,15 @@ async function prepare(
   if (input.employeeCode) {
     device = await linkDevice(userId, input.employeeCode, "Telefon");
   }
-  if (device) void touchDevice(device.id);
+  if (device?.active) void touchDevice(device.id);
   const [employee, events, counts, duplicate] = await Promise.all([
     device ? loadEmployee(device.employeeId) : Promise.resolve(null),
     device ? loadRecentEvents(device.employeeId, now, timeZone) : Promise.resolve([]),
-    device ? recognitionCount(device.employeeId) : Promise.resolve(0),
+    device ? recognitionCounts(device.employeeId) : Promise.resolve({ entries: 0, exits: 0 }),
     device && tag ? isDuplicate(device.employeeId, tag.id, settings.duplicateWindowSeconds) : Promise.resolve(false),
   ]);
-  const recognized = isDeviceRecognized(counts);
+  const recognized = isDeviceRecognized(counts.entries, counts.exits);
+  if (device && recognized && !device.active) await restoreRecognizedDevice(device.id, userId);
   const location = locationOf(settings, input);
   const state = deriveCurrentPresence(events, now, timeZone, employee?.workEnd ?? settings.defaultWorkEnd);
   return {
@@ -244,7 +262,7 @@ async function prepare(
     duplicate,
     recognized,
     confirmed: Boolean(input.employeeCode),
-    recordCount: counts,
+    recordCount: Math.max(counts.entries, counts.exits),
     reasons,
     state,
   };

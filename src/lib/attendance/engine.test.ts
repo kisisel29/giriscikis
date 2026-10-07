@@ -115,9 +115,10 @@ describe("senaryo 4 6 7 8", () => {
 });
 
 describe("cihaz tanıma", () => {
-  it("aynı kodla üçten fazla kayıtta cihaz tanınır", () => {
-    expect(isDeviceRecognized(3)).toBe(false);
-    expect(isDeviceRecognized(4)).toBe(true);
+  it("aynı cihazda üçten fazla giriş veya çıkış varsa tanınır", () => {
+    expect(isDeviceRecognized(3, 3)).toBe(false);
+    expect(isDeviceRecognized(4, 0)).toBe(true);
+    expect(isDeviceRecognized(0, 4)).toBe(true);
   });
 });
 
