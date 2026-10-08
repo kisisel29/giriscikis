@@ -14,8 +14,11 @@ export async function requireUser(): Promise<User> {
   return data.user;
 }
 
-export async function requireAdmin(): Promise<{ user: User; fullName: string; email: string }> {
+export type PanelRole = "admin" | "viewer";
+
+export async function requirePanel(): Promise<{ user: User; fullName: string; email: string; role: PanelRole }> {
   const user = await requireUser();
+  const viewer = user.app_metadata?.role === "viewer";
   const admin = createAdminClient();
   const result = await admin
     .from("admin_users")
@@ -24,9 +27,31 @@ export async function requireAdmin(): Promise<{ user: User; fullName: string; em
     .eq("active", true)
     .maybeSingle();
   const data = unwrap(result);
-  if (!data) throw new ApiError("Bu işlem için yönetici yetkisi gerekir.", 403);
-  const record = asRow(data);
-  return { user, fullName: str(record, "full_name"), email: str(record, "email") };
+  if (data) {
+    const record = asRow(data);
+    return {
+      user,
+      fullName: str(record, "full_name"),
+      email: str(record, "email"),
+      role: viewer ? "viewer" : "admin",
+    };
+  }
+  if (viewer) {
+    const named = user.user_metadata?.full_name;
+    return {
+      user,
+      fullName: typeof named === "string" && named.trim() ? named : "İzleme",
+      email: user.email ?? "",
+      role: "viewer",
+    };
+  }
+  throw new ApiError("Bu işlem için yönetici yetkisi gerekir.", 403);
+}
+
+export async function requireAdmin(): Promise<{ user: User; fullName: string; email: string; role: PanelRole }> {
+  const panel = await requirePanel();
+  if (panel.role !== "admin") throw new ApiError("Bu işlem için yönetici yetkisi gerekir.", 403);
+  return panel;
 }
 
 export async function assertRateLimit(authUserId: string): Promise<void> {

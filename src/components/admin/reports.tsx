@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState } from "react";
 import { downloadFile, api } from "@/components/admin/api";
+import { usePanelRole } from "@/components/admin/shell";
 import { dayKey } from "@/lib/time";
 
 type Day = {
@@ -45,6 +46,7 @@ function labelDay(key: string): string {
 }
 
 export function ReportView() {
+  const role = usePanelRole();
   const todayKey = dayKey(new Date());
   const [from, setFrom] = useState(todayKey);
   const [to, setTo] = useState(todayKey);
@@ -113,18 +115,22 @@ export function ReportView() {
         <p className="pb-3 text-sm text-slate-500">
           {labelDay(start)} – {labelDay(end)}
         </p>
-        <label className="grid gap-1 text-sm font-medium">
-          Silinecek gün
-          <input type="date" value={eraseDay} onChange={(event) => setEraseDay(event.target.value)} className="min-h-11 rounded-xl border px-3" />
-        </label>
-        <button
-          type="button"
-          disabled={removing || !eraseDay}
-          onClick={() => void removeDay(eraseDay)}
-          className="min-h-11 rounded-xl bg-rose-800 px-4 font-semibold text-white disabled:opacity-50"
-        >
-          Günün kayıtlarını sil
-        </button>
+        {role === "admin" ? (
+          <>
+            <label className="grid gap-1 text-sm font-medium">
+              Silinecek gün
+              <input type="date" value={eraseDay} onChange={(event) => setEraseDay(event.target.value)} className="min-h-11 rounded-xl border px-3" />
+            </label>
+            <button
+              type="button"
+              disabled={removing || !eraseDay}
+              onClick={() => void removeDay(eraseDay)}
+              className="min-h-11 rounded-xl bg-rose-800 px-4 font-semibold text-white disabled:opacity-50"
+            >
+              Günün kayıtlarını sil
+            </button>
+          </>
+        ) : null}
       </div>
       {error ? <p className="text-rose-700">{error}</p> : null}
       <div className="overflow-x-auto rounded-3xl bg-white ring-1 ring-slate-200">
@@ -174,14 +180,16 @@ export function ReportView() {
                                 <span>
                                   {item.dateLabel}: giriş {item.firstEntryLabel}, çıkış {item.lastExitLabel}, kurumda {item.physical}, {item.stateLabel}
                                 </span>
-                                <button
-                                  type="button"
-                                  disabled={removing}
-                                  onClick={() => void removeDay(item.date, row.employeeId, row.fullName)}
-                                  className="rounded-lg px-2 py-1 text-rose-800 ring-1 ring-rose-200 disabled:opacity-50"
-                                >
-                                  Sil
-                                </button>
+                                {role === "admin" ? (
+                                  <button
+                                    type="button"
+                                    disabled={removing}
+                                    onClick={() => void removeDay(item.date, row.employeeId, row.fullName)}
+                                    className="rounded-lg px-2 py-1 text-rose-800 ring-1 ring-rose-200 disabled:opacity-50"
+                                  >
+                                    Sil
+                                  </button>
+                                ) : null}
                               </p>
                             ))}
                         {row.officialDetails.map((detail, index) => (

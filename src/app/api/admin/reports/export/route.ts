@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { toErrorResponse } from "@/lib/api-error";
 import { renderPdf, renderXlsx, reportTables } from "@/lib/export/files";
 import { getReport } from "@/lib/server/reporting";
-import { requireAdmin } from "@/lib/server/session";
+import { requirePanel } from "@/lib/server/session";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    await requireAdmin();
+    await requirePanel();
     const params = new URL(request.url).searchParams;
     const format = params.get("format") === "pdf" ? "pdf" : "xlsx";
     const data = await getReport(params);

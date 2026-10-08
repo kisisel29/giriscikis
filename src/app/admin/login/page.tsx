@@ -21,8 +21,10 @@ export default function LoginPage() {
           void (async () => {
             try {
               const supabase = createBrowserSupabase();
+              const rawName = String(form.get("email") ?? "").trim();
+              const email = rawName.includes("@") ? rawName : `${rawName.toLocaleLowerCase("en-US")}@isyeri.local`;
               const { error: signInError } = await supabase.auth.signInWithPassword({
-                email: String(form.get("email") ?? ""),
+                email,
                 password: String(form.get("password") ?? ""),
               });
               if (signInError) {
@@ -32,7 +34,7 @@ export default function LoginPage() {
               const session = await fetch("/api/admin/session");
               if (!session.ok) {
                 await supabase.auth.signOut();
-                setError("Bu hesap yönetici değil.");
+                setError("Bu hesap panele giremez.");
                 return;
               }
               router.push("/admin");
@@ -45,8 +47,8 @@ export default function LoginPage() {
           })();
         }}
       >
-        <h1 className="text-2xl font-semibold">Yönetici girişi</h1>
-        <input name="email" type="email" required placeholder="E-posta" className="min-h-12 rounded-2xl border border-slate-200 px-3" />
+        <h1 className="text-2xl font-semibold">Yönetim girişi</h1>
+        <input name="email" type="text" required autoComplete="username" placeholder="E-posta veya kullanıcı adı" className="min-h-12 rounded-2xl border border-slate-200 px-3" />
         <input name="password" type="password" required placeholder="Şifre" className="min-h-12 rounded-2xl border border-slate-200 px-3" />
         {error ? <p className="text-rose-700">{error}</p> : null}
         <button disabled={pending} className="min-h-12 rounded-2xl bg-teal-800 font-semibold text-white disabled:opacity-60">

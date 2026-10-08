@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/components/admin/api";
+import { usePanelRole } from "@/components/admin/shell";
 
 type EventRow = {
   id: string;
@@ -33,6 +34,7 @@ const presets = [
 ] as const;
 
 export function EventsFeed() {
+  const role = usePanelRole();
   const [preset, setPreset] = useState("today");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -92,6 +94,7 @@ export function EventsFeed() {
           <option value="OTHER">Diğer</option>
         </select>
       </div>
+      {role === "admin" ? (
       <form
         className="grid gap-2 rounded-3xl bg-white p-4 ring-1 ring-slate-200 md:grid-cols-2"
         onSubmit={(event) => {
@@ -158,6 +161,7 @@ export function EventsFeed() {
           Kaydı ekle
         </button>
       </form>
+      ) : null}
       {error ? <p className="text-rose-700">{error}</p> : null}
       <div className="grid gap-2">
         {rows.map((row) => (
@@ -166,10 +170,12 @@ export function EventsFeed() {
               {row.date} {row.time} {row.employeeName} — {row.title}
             </p>
             {row.detail ? <p className="text-slate-600">“{row.detail}”</p> : null}
+            {role === "admin" ? (
             <button type="button" className="mt-2 text-sm text-teal-800" onClick={() => setEditing(row.id)}>
               Düzelt
             </button>
-            {editing === row.id ? (
+            ) : null}
+            {role === "admin" && editing === row.id ? (
               <form
                 className="mt-2 grid gap-2"
                 onSubmit={(event) => {

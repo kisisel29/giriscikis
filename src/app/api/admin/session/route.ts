@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { toErrorResponse } from "@/lib/api-error";
-import { requireAdmin } from "@/lib/server/session";
+import { requirePanel } from "@/lib/server/session";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const admin = await requireAdmin();
-    return NextResponse.json({ fullName: admin.fullName, email: admin.email });
+    const panel = await requirePanel();
+    return NextResponse.json({ fullName: panel.fullName, email: panel.email, role: panel.role });
   } catch (error) {
     return toErrorResponse(error);
   }

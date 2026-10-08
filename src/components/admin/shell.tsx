@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { createContext, useContext } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/lib/supabase/browser";
 
@@ -18,15 +19,25 @@ const links = [
   ["/admin/settings", "Ayarlar"],
 ] as const;
 
-export function AdminShell({ name, children }: { name: string; children: React.ReactNode }) {
+const viewerHrefs = new Set(["/admin", "/admin/live", "/admin/presence", "/admin/events", "/admin/reports", "/admin/review"]);
+
+const RoleContext = createContext<"admin" | "viewer">("admin");
+
+export function usePanelRole() {
+  return useContext(RoleContext);
+}
+
+export function AdminShell({ name, role, children }: { name: string; role: "admin" | "viewer"; children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const menu = role === "viewer" ? links.filter(([href]) => viewerHrefs.has(href)) : links;
   return (
+    <RoleContext.Provider value={role}>
     <div className="min-h-full md:grid md:grid-cols-[240px_1fr]">
       <aside className="border-b border-slate-200 bg-white md:min-h-screen md:border-r md:border-b-0">
         <div className="flex items-center justify-between px-4 py-4">
           <div>
-            <p className="text-xs tracking-[0.16em] text-teal-800">YÖNETİM</p>
+            <p className="text-xs tracking-[0.16em] text-teal-800">{role === "viewer" ? "İZLEME" : "YÖNETİM"}</p>
             <p className="font-semibold">{name}</p>
           </div>
           <button
@@ -42,7 +53,7 @@ export function AdminShell({ name, children }: { name: string; children: React.R
           </button>
         </div>
         <nav className="flex gap-2 overflow-x-auto px-3 pb-3 md:grid md:px-3">
-          {links.map(([href, label]) => {
+          {menu.map(([href, label]) => {
             const active = pathname === href;
             return (
               <Link
@@ -58,5 +69,6 @@ export function AdminShell({ name, children }: { name: string; children: React.R
       </aside>
       <div className="px-4 py-5 md:px-8">{children}</div>
     </div>
+    </RoleContext.Provider>
   );
 }
