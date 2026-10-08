@@ -8,7 +8,7 @@ import { pairingPepper } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeEmployeeCode, parseCustomExitReason, sanitizePlainText, slugCode } from "@/lib/text";
 import { safeTimeZone, startOfDay } from "@/lib/time";
-import { correctionSchema, employeeSchema, exitReasonSchema, nfcTagSchema, parseBody, settingsSchema } from "@/lib/validation";
+import { correctionSchema, employeeSchema, exitReasonSchema, manualAttendanceSchema, nfcTagSchema, parseBody, settingsSchema } from "@/lib/validation";
 import {
   asRow,
   mapEmployee,
@@ -299,30 +299,42 @@ export async function correctAttendance(id: string, body: unknown, adminUserId: 
   }
   const custom = parseCustomExitReason(input.customExitReason);
   const note = sanitizePlainText(input.note, { min: 1, max: 500, label: "Not" });
-  let exitCategory: ExitCategory | null = input.exitCategory ?? null;
-  if (input.eventType === "ENTRY" || input.eventType === "RETURN") {
-    exitCategory = null;
-  } else if (input.eventType === "END_OF_DAY") {
-    exitCategory = "END_OF_DAY";
-  } else if (!exitCategory) {
-    exitCategory = "OTHER";
-  }
-  if ((input.eventType === "EXIT" || input.eventType === "END_OF_DAY") && !input.exitReasonId && !custom) {
-    throw new ApiError("Çıkış kaydında hazır neden veya açıklama bulunmalıdır.", 400);
-  }
   const admin = createAdminClient();
   const existing = unwrap(await admin.from("attendance_events").select("*").eq("id", id).maybeSingle());
   if (!existing) throw new ApiError("Hareket bulunamadı.", 404);
+  const previous = asRow(existing);
+  const previousReasonId = typeof previous.exit_reason_id === "string" ? previous.exit_reason_id : null;
+  const previousCustom = typeof previous.custom_exit_reason === "string" ? previous.custom_exit_reason : null;
+  const previousCategory = typeof previous.exit_category === "string" ? (previous.exit_category as ExitCategory) : null;
+  let exitCategory: ExitCategory | null = input.exitCategory ?? null;
+  let exitReasonId = input.exitReasonId ?? null;
+  let customReason = custom;
+  if (input.eventType === "ENTRY" || input.eventType === "RETURN") {
+    exitCategory = null;
+    exitReasonId = null;
+    customReason = null;
+  } else if (input.eventType === "END_OF_DAY") {
+    exitCategory = "END_OF_DAY";
+    if (!exitReasonId) exitReasonId = previousReasonId;
+    if (!customReason) customReason = previousCustom;
+  } else {
+    if (!exitCategory) exitCategory = previousCategory ?? "OTHER";
+    if (!exitReasonId) exitReasonId = previousReasonId;
+    if (!customReason) customReason = previousCustom;
+  }
+  if ((input.eventType === "EXIT" || input.eventType === "END_OF_DAY") && !exitReasonId && !customReason) {
+    throw new ApiError("Çıkış kaydında hazır neden veya açıklama bulunmalıdır.", 400);
+  }
   const updated = unwrap(
     await admin
       .from("attendance_events")
       .update({
         event_type: input.eventType,
         event_time: when.toISOString(),
-        exit_reason_id: input.eventType === "ENTRY" || input.eventType === "RETURN" ? null : input.exitReasonId ?? null,
-        custom_exit_reason: input.eventType === "ENTRY" || input.eventType === "RETURN" ? null : custom,
+        exit_reason_id: exitReasonId,
+        custom_exit_reason: customReason,
         exit_category: exitCategory,
-        note,
+        ...(note ? { note } : {}),
         corrected_at: new Date().toISOString(),
         corrected_by: adminUserId,
       })
@@ -343,6 +355,82 @@ export async function correctAttendance(id: string, body: unknown, adminUserId: 
   if (logged.error) {
     console.error(logged.error);
     throw new ApiError("Kayıt değişti ancak denetim günlüğü yazılamadı.", 500);
+  }
+  return mapEvent({ ...asRow(updated), exit_reasons: null });
+}
+
+export async function createManualAttendance(body: unknown, adminUserId: string) {
+  const input = parseBody(manualAttendanceSchema, body);
+  const when = new Date(input.eventTime);
+  if (when.getTime() > Date.now() + 5 * 60_000) {
+    throw new ApiError("Gelecek bir saat kaydedilemez.", 400);
+  }
+  const admin = createAdminClient();
+  const employee = unwrap(await admin.from("employees").select("id").eq("id", input.employeeId).maybeSingle());
+  if (!employee) throw new ApiError("Personel bulunamadı.", 404);
+  let eventType = input.eventType;
+  let exitCategory: ExitCategory | null = input.exitCategory ?? null;
+  let exitReasonId = input.exitReasonId ?? null;
+  let customReason = parseCustomExitReason(input.customExitReason);
+  if (eventType === "ENTRY" || eventType === "RETURN") {
+    exitCategory = null;
+    exitReasonId = null;
+    customReason = null;
+  } else if (exitReasonId) {
+    const reason = unwrap(await admin.from("exit_reasons").select("id, category").eq("id", exitReasonId).maybeSingle());
+    if (!reason) throw new ApiError("Seçilen çıkış nedeni bulunamadı.", 400);
+    const category = String(asRow(reason).category ?? "");
+    exitCategory = category === "END_OF_DAY" ? "END_OF_DAY" : (category as ExitCategory);
+    eventType = exitCategory === "END_OF_DAY" ? "END_OF_DAY" : "EXIT";
+  } else if (!customReason) {
+    throw new ApiError("Çıkış kaydında hazır neden veya açıklama bulunmalıdır.", 400);
+  } else if (eventType === "END_OF_DAY") {
+    exitCategory = "END_OF_DAY";
+  } else if (!exitCategory) {
+    exitCategory = "OTHER";
+  }
+  const inserted = unwrap(
+    await admin
+      .from("attendance_events")
+      .insert({
+        employee_id: input.employeeId,
+        event_type: eventType,
+        event_time: when.toISOString(),
+        exit_reason_id: exitReasonId,
+        custom_exit_reason: customReason,
+        exit_category: exitCategory,
+        location_verified: false,
+      })
+      .select("id")
+      .single(),
+  );
+  const id = str(asRow(inserted), "id");
+  const updated = unwrap(
+    await admin
+      .from("attendance_events")
+      .update({
+        event_time: when.toISOString(),
+        corrected_at: new Date().toISOString(),
+        corrected_by: adminUserId,
+      })
+      .eq("id", id)
+      .select("*")
+      .single(),
+  );
+  const logged = await admin.from("audit_logs").insert(
+    buildAuditEntry({
+      adminUserId,
+      action: "INSERT",
+      tableName: "attendance_events",
+      recordId: id,
+      oldData: null,
+      newData: updated,
+      reason: input.reason,
+    }),
+  );
+  if (logged.error) {
+    console.error(logged.error);
+    throw new ApiError("Kayıt eklendi ancak denetim günlüğü yazılamadı.", 500);
   }
   return mapEvent({ ...asRow(updated), exit_reasons: null });
 }

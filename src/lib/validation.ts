@@ -106,6 +106,16 @@ export const settingsSchema = z.object({
   storeRawCoordinates: z.boolean(),
 });
 
+export const manualAttendanceSchema = z.object({
+  employeeId: z.uuid("Personel seçin."),
+  eventType: z.enum(["ENTRY", "EXIT", "RETURN", "END_OF_DAY"]),
+  eventTime: z.string().refine((value) => !Number.isNaN(Date.parse(value)), "Geçerli bir zaman girin."),
+  exitReasonId: z.uuid().nullable().optional(),
+  customExitReason: optionalText(250),
+  exitCategory: z.enum(["OFFICIAL", "MEAL", "HEALTH", "PERSONAL", "END_OF_DAY", "OTHER"]).nullable().optional(),
+  reason: text("Düzeltme nedeni", 5, 500),
+});
+
 export const correctionSchema = z.object({
   eventType: z.enum(["ENTRY", "EXIT", "RETURN", "END_OF_DAY"]),
   eventTime: z.string().refine((value) => !Number.isNaN(Date.parse(value)), "Geçerli bir zaman girin."),

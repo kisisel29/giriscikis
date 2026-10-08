@@ -22,6 +22,7 @@ export async function GET(_request: Request, context: Context) {
       history: history.map((event) => ({
         id: event.id,
         eventType: event.eventType,
+        eventTime: event.eventTime,
         when: formatDateTime(event.eventTime),
         ...describeMovement(event, undefined, history),
         customExitReason: event.customExitReason,
