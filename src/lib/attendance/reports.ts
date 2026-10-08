@@ -32,13 +32,15 @@ export type EmployeeReport = {
   earlyCount: number;
   earlyMs: number;
   missingCount: number;
+  leaveCount: number;
   averageEntry: string | null;
   averageExit: string | null;
   officialDetails: OfficialDetail[];
 };
 
 function sumDays(days: DayMetrics[], missingCount: number, timeZone: string): Omit<EmployeeReport, "employeeId" | "fullName" | "department" | "days"> {
-  const total = (pick: (day: DayMetrics) => number) => days.reduce((sum, day) => sum + pick(day), 0);
+  const counted = days.filter((day) => !day.onLeave);
+  const total = (pick: (day: DayMetrics) => number) => counted.reduce((sum, day) => sum + pick(day), 0);
   return {
     physicalMs: total((day) => day.physicalMs),
     dutyMs: total((day) => day.dutyMs),
@@ -48,14 +50,15 @@ function sumDays(days: DayMetrics[], missingCount: number, timeZone: string): Om
     healthMs: total((day) => day.healthMs),
     personalMs: total((day) => day.personalMs),
     otherMs: total((day) => day.otherMs),
-    lateCount: days.filter((day) => day.lateMs > 0).length,
+    lateCount: counted.filter((day) => day.lateMs > 0).length,
     lateMs: total((day) => day.lateMs),
-    earlyCount: days.filter((day) => day.earlyMs > 0).length,
+    earlyCount: counted.filter((day) => day.earlyMs > 0).length,
     earlyMs: total((day) => day.earlyMs),
     missingCount,
-    averageEntry: averageClock(days.map((day) => day.firstEntry), timeZone),
-    averageExit: averageClock(days.map((day) => day.lastExit), timeZone),
-    officialDetails: days.flatMap((day) => day.officialDetails),
+    leaveCount: days.length - counted.length,
+    averageEntry: averageClock(counted.map((day) => day.firstEntry), timeZone),
+    averageExit: averageClock(counted.map((day) => day.lastExit), timeZone),
+    officialDetails: counted.flatMap((day) => day.officialDetails),
   };
 }
 

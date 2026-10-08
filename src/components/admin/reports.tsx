@@ -33,6 +33,7 @@ type Report = {
   earlyCount: number;
   early: string;
   missingCount: number;
+  leaveCount: number;
   days: Day[];
   officialDetails: { dateLabel: string; label: string; custom: string | null; duration: string }[];
 };
@@ -50,6 +51,9 @@ export function ReportView() {
   const [rows, setRows] = useState<Report[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [eraseDay, setEraseDay] = useState(todayKey);
+  const [removing, setRemoving] = useState(false);
+  const [reload, setReload] = useState(0);
   const start = from <= to ? from : to;
   const end = from <= to ? to : from;
   const singleDay = start === end;
@@ -60,7 +64,29 @@ export function ReportView() {
     void api<{ reports: Report[] }>(`/api/admin/reports?${query}`)
       .then((data) => setRows(data.reports))
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Rapor alınamadı."));
-  }, [query]);
+  }, [query, reload]);
+
+  async function removeDay(date: string, employeeId?: string, name?: string) {
+    const label = labelDay(date);
+    const scope = name ? `${name} için ` : "tüm personelin ";
+    if (!window.confirm(`${label} gününde ${scope}giriş ve çıkış kayıtları silinsin mi?`)) return;
+    setRemoving(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ date });
+      if (employeeId) params.set("employeeId", employeeId);
+      const result = await api<{ deleted: number }>(`/api/admin/attendance/day?${params}`, { method: "DELETE" });
+      if (result.deleted === 0) {
+        setError(`${label} gününde silinecek kayıt yok.`);
+        return;
+      }
+      setReload((value) => value + 1);
+    } catch (caught: unknown) {
+      setError(caught instanceof Error ? caught.message : "Günün kayıtları silinemedi.");
+    } finally {
+      setRemoving(false);
+    }
+  }
 
   return (
     <div className="grid gap-4">
@@ -87,6 +113,18 @@ export function ReportView() {
         <p className="pb-3 text-sm text-slate-500">
           {labelDay(start)} – {labelDay(end)}
         </p>
+        <label className="grid gap-1 text-sm font-medium">
+          Silinecek gün
+          <input type="date" value={eraseDay} onChange={(event) => setEraseDay(event.target.value)} className="min-h-11 rounded-xl border px-3" />
+        </label>
+        <button
+          type="button"
+          disabled={removing || !eraseDay}
+          onClick={() => void removeDay(eraseDay)}
+          className="min-h-11 rounded-xl bg-rose-800 px-4 font-semibold text-white disabled:opacity-50"
+        >
+          Günün kayıtlarını sil
+        </button>
       </div>
       {error ? <p className="text-rose-700">{error}</p> : null}
       <div className="overflow-x-auto rounded-3xl bg-white ring-1 ring-slate-200">
@@ -127,13 +165,23 @@ export function ReportView() {
                     <tr key={`${row.employeeId}-detail`}>
                       <td colSpan={8} className="bg-slate-50 px-3 py-3">
                         <p>
-                          Mesai kapsamı {row.duty}. Fazla mesai {row.overtime}. Geç giriş {row.lateCount} ({row.late}). Erken çıkış {row.earlyCount} ({row.early}).
+                          Mesai kapsamı {row.duty}. Fazla mesai {row.overtime}. Geç giriş {row.lateCount} ({row.late}). Erken çıkış {row.earlyCount} ({row.early}). İzinli gün {row.leaveCount}.
                         </p>
                         {singleDay
                           ? null
                           : row.days.map((item) => (
-                              <p key={item.date} className="mt-1">
-                                {item.dateLabel}: giriş {item.firstEntryLabel}, çıkış {item.lastExitLabel}, kurumda {item.physical}, {item.stateLabel}
+                              <p key={item.date} className="mt-1 flex flex-wrap items-center gap-2">
+                                <span>
+                                  {item.dateLabel}: giriş {item.firstEntryLabel}, çıkış {item.lastExitLabel}, kurumda {item.physical}, {item.stateLabel}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={removing}
+                                  onClick={() => void removeDay(item.date, row.employeeId, row.fullName)}
+                                  className="rounded-lg px-2 py-1 text-rose-800 ring-1 ring-rose-200 disabled:opacity-50"
+                                >
+                                  Sil
+                                </button>
                               </p>
                             ))}
                         {row.officialDetails.map((detail, index) => (

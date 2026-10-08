@@ -352,6 +352,28 @@ describe("canlı durum ve rapor", () => {
     expect(report?.lateCount).toBe(1);
     expect(report?.earlyCount).toBe(1);
   });
+
+  it("giriş ve çıkış olmayan günü izinde sayar ve ortalamadan çıkarır", () => {
+    const events = [
+      event({ eventType: "RETURN", eventTime: "2026-10-07T08:10:00+03:00" }),
+      event({ eventType: "END_OF_DAY", eventTime: "2026-10-07T16:45:00+03:00", exitCategory: "END_OF_DAY" }),
+    ];
+    const [report] = buildReports({
+      employees: [{ id: "emp-1", fullName: "Azade Toksoy", department: null, workStart: "08:30", workEnd: "16:45" }],
+      events,
+      start: new Date("2026-10-07T00:00:00+03:00"),
+      end: new Date("2026-10-08T23:00:00+03:00"),
+      now: new Date("2026-10-08T08:38:00+03:00"),
+      duplicateWindowSeconds: 30,
+    });
+    expect(report?.days.find((day) => day.date === "2026-10-08")?.onLeave).toBe(true);
+    expect(report?.days.find((day) => day.date === "2026-10-07")?.onLeave).toBe(false);
+    expect(report?.leaveCount).toBe(1);
+    expect(report?.missingCount).toBe(0);
+    expect(report?.averageEntry).toBe("08:10");
+    expect(report?.averageExit).toBe("16:45");
+    expect(report?.physicalMs).toBe(report?.days.find((day) => day.date === "2026-10-07")?.physicalMs);
+  });
 });
 
 describe("eşleştirme kodu", () => {

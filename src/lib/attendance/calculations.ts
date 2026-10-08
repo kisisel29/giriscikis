@@ -87,6 +87,7 @@ export type DayMetrics = {
   lateMs: number;
   earlyMs: number;
   state: AttendanceState;
+  onLeave: boolean;
   officialDetails: OfficialDetail[];
 };
 
@@ -143,7 +144,10 @@ export function calculateDay(input: {
         )
       );
     }, 0);
-  const firstEntry = dayEvents.find((event) => event.eventType === "ENTRY")?.eventTime ?? null;
+  const arrival = dayEvents.find((event) => event.eventType === "ENTRY" || event.eventType === "RETURN");
+  const hasDeparture = dayEvents.some((event) => event.eventType === "EXIT" || event.eventType === "END_OF_DAY");
+  const onLeave = !arrival && !hasDeparture;
+  const firstEntry = arrival?.eventTime ?? null;
   const lastExitEvent = [...dayEvents].reverse().find((event) => event.eventType === "EXIT" || event.eventType === "END_OF_DAY");
   const lastExit = assumedExit?.toISOString() ?? lastExitEvent?.eventTime ?? null;
   const lastEvent = dayEvents[dayEvents.length - 1];
@@ -189,6 +193,7 @@ export function calculateDay(input: {
     lateMs,
     earlyMs,
     state: assumedExit ? "FINISHED" : deriveState(dayEvents),
+    onLeave,
     officialDetails,
   };
 }

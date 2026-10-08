@@ -25,7 +25,7 @@ export function findDayAnomalies(input: {
   const anomalies: Anomaly[] = [];
   if (dayEvents.length === 0) return anomalies;
 
-  if (dayEvents[0].eventType !== "ENTRY") {
+  if (dayEvents[0].eventType !== "ENTRY" && dayEvents[0].eventType !== "RETURN") {
     anomalies.push({
       code: "EXIT_WITHOUT_ENTRY",
       employeeId: input.employeeId,

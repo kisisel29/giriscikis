@@ -229,7 +229,7 @@ export async function getReport(params: URLSearchParams) {
         official: formatDuration(day.officialMs),
         personal: formatDuration(day.personalMs),
         other: formatDuration(day.otherMs),
-        stateLabel: STATE_LABELS[day.state].title,
+        stateLabel: day.onLeave ? "İzinli" : STATE_LABELS[day.state].title,
       })),
       officialDetails: report.officialDetails.map((detail) => ({
         ...detail,

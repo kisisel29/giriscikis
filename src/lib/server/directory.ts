@@ -7,6 +7,7 @@ import { generatePairingCode, hashPairingCode, PAIRING_TTL_MS } from "@/lib/pair
 import { pairingPepper } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeEmployeeCode, parseCustomExitReason, sanitizePlainText, slugCode } from "@/lib/text";
+import { safeTimeZone, startOfDay } from "@/lib/time";
 import { correctionSchema, employeeSchema, exitReasonSchema, nfcTagSchema, parseBody, settingsSchema } from "@/lib/validation";
 import {
   asRow,
@@ -344,6 +345,43 @@ export async function correctAttendance(id: string, body: unknown, adminUserId: 
     throw new ApiError("Kayıt değişti ancak denetim günlüğü yazılamadı.", 500);
   }
   return mapEvent({ ...asRow(updated), exit_reasons: null });
+}
+
+export async function deleteDayAttendance(date: string, adminUserId: string, employeeId?: string | null) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ApiError("Gün seçin.", 400);
+  if (employeeId && !/^[0-9a-f-]{36}$/i.test(employeeId)) throw new ApiError("Personel seçin.", 400);
+  const settings = await getSettings();
+  const timeZone = safeTimeZone(settings.timezone);
+  const start = startOfDay(new Date(`${date}T12:00:00+03:00`), timeZone);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  const admin = createAdminClient();
+  let query = admin.from("attendance_events").select("*").gte("event_time", start.toISOString()).lt("event_time", end.toISOString());
+  if (employeeId) query = query.eq("employee_id", employeeId);
+  const rows = (unwrap(await query) ?? []) as Record<string, unknown>[];
+  const records = rows.filter((row) => typeof row.id === "string");
+  if (records.length === 0) return { deleted: 0 };
+  const ids = records.map((row) => String(row.id));
+  const removed = await admin.from("attendance_events").delete().in("id", ids);
+  if (removed.error) throw new ApiError("Günün kayıtları silinemedi.", 500);
+  const reason = `${date.split("-").reverse().join(".")} gününe ait giriş ve çıkış kayıtları silindi`;
+  const logged = await admin.from("audit_logs").insert(
+    records.map((row) =>
+      buildAuditEntry({
+        adminUserId,
+        action: "DELETE",
+        tableName: "attendance_events",
+        recordId: String(row.id),
+        oldData: row,
+        newData: null,
+        reason,
+      }),
+    ),
+  );
+  if (logged.error) {
+    console.error(logged.error);
+    throw new ApiError("Kayıtlar silindi ancak denetim günlüğü yazılamadı.", 500);
+  }
+  return { deleted: ids.length };
 }
 
 export async function listAudit() {
