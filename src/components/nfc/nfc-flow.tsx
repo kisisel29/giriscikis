@@ -30,6 +30,9 @@ function writeMemory(memory: DeviceMemory) {
   } catch {
     // Telefon depolaması kapalıysa kod yalnızca bu oturumda kalır.
   }
+  if (memory.count > 3) {
+    document.cookie = `isyeri-kod=${memory.code}; Max-Age=34560000; Path=/; SameSite=Lax; Secure`;
+  }
 }
 
 function clearMemory() {
@@ -38,11 +41,18 @@ function clearMemory() {
   } catch {
     // Depolama kapalıysa silinecek kayıt da yoktur.
   }
+  document.cookie = "isyeri-kod=; Max-Age=0; Path=/; SameSite=Lax; Secure";
+}
+
+function readCookieCode(): string {
+  const match = document.cookie.match(/(?:^|; )isyeri-kod=(\d{3})(?:;|$)/);
+  return match?.[1] ?? "";
 }
 
 function trustedCode(): string {
   const memory = readMemory();
-  return memory && isRemembered(memory.count) ? memory.code : "";
+  if (memory && isRemembered(memory.count)) return memory.code;
+  return readCookieCode();
 }
 
 function isRemembered(count: number): boolean {
