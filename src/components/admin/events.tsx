@@ -171,9 +171,27 @@ export function EventsFeed() {
             </p>
             {row.detail ? <p className="text-slate-600">“{row.detail}”</p> : null}
             {role === "admin" ? (
-            <button type="button" className="mt-2 text-sm text-teal-800" onClick={() => setEditing(row.id)}>
-              Düzelt
-            </button>
+            <div className="mt-2 flex gap-4">
+              <button type="button" className="text-sm text-teal-800" onClick={() => setEditing(row.id)}>
+                Düzelt
+              </button>
+              <button
+                type="button"
+                className="text-sm text-rose-800"
+                onClick={() => {
+                  if (!window.confirm(`${row.date} ${row.time} ${row.employeeName} — ${row.title} kaydı silinsin mi?`)) return;
+                  setError(null);
+                  void api(`/api/admin/attendance/${row.id}`, { method: "DELETE" })
+                    .then(() => {
+                      if (editing === row.id) setEditing(null);
+                      setReload((value) => value + 1);
+                    })
+                    .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Kayıt silinemedi."));
+                }}
+              >
+                Sil
+              </button>
+            </div>
             ) : null}
             {role === "admin" && editing === row.id ? (
               <form

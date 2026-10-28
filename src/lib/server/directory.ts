@@ -435,6 +435,31 @@ export async function createManualAttendance(body: unknown, adminUserId: string)
   return mapEvent({ ...asRow(updated), exit_reasons: null });
 }
 
+export async function deleteAttendance(id: string, adminUserId: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new ApiError("Kayıt bulunamadı.", 404);
+  const admin = createAdminClient();
+  const existing = unwrap(await admin.from("attendance_events").select("*").eq("id", id).maybeSingle());
+  if (!existing) throw new ApiError("Kayıt bulunamadı.", 404);
+  const removed = await admin.from("attendance_events").delete().eq("id", id);
+  if (removed.error) throw new ApiError("Kayıt silinemedi.", 500);
+  const logged = await admin.from("audit_logs").insert(
+    buildAuditEntry({
+      adminUserId,
+      action: "DELETE",
+      tableName: "attendance_events",
+      recordId: id,
+      oldData: existing,
+      newData: null,
+      reason: "Hareket kaydı yönetici tarafından silindi",
+    }),
+  );
+  if (logged.error) {
+    console.error(logged.error);
+    throw new ApiError("Kayıt silindi ancak denetim günlüğü yazılamadı.", 500);
+  }
+  return { deleted: 1 };
+}
+
 export async function deleteDayAttendance(date: string, adminUserId: string, employeeId?: string | null) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ApiError("Gün seçin.", 400);
   if (employeeId && !/^[0-9a-f-]{36}$/i.test(employeeId)) throw new ApiError("Personel seçin.", 400);
